@@ -11,8 +11,8 @@ module "eks" {
   subnet_ids                     = module.vpc.private_subnets
   cluster_endpoint_public_access = true
 
-  # Cluster access entry
-  enable_cluster_creator_admin_permissions = true
+  # Enable IRSA
+  enable_irsa = var.enable_irsa
 
   cluster_addons = {
     coredns = {

@@ -132,7 +132,7 @@ export class ClientAnalysisService {
       }
     });
 
-    const average = sentimentValues.reduce((sum, value) => sum + value, 0) / sentimentValues.length;
+    const average = sentimentValues.reduce((sum: number, value) => sum + value, 0) / sentimentValues.length;
     return Math.round(average * 100) / 100; // Arredondar para 2 casas decimais
   }
 
