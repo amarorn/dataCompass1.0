@@ -288,6 +288,15 @@ export class WhatsAppService {
    * Verifica se as credenciais estão configuradas
    */
   public isConfigured(): boolean {
+    // Verificar se os tokens são placeholders
+    const isPlaceholderToken = this.accessToken.includes('your-') || this.accessToken.includes('token-here');
+    const isPlaceholderPhoneId = this.phoneNumberId.includes('your-') || this.phoneNumberId.includes('id-here');
+    
+    if (isPlaceholderToken || isPlaceholderPhoneId) {
+      console.log('🔧 WhatsApp tokens are placeholders, using simulation mode');
+      return false; // Usar modo simulação
+    }
+    
     return !!(this.accessToken && this.phoneNumberId);
   }
 
