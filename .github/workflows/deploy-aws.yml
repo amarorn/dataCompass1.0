@@ -138,7 +138,7 @@ jobs:
         sed -i "s|IMAGE_TAG_PLACEHOLDER|${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}|g" k8s/base/deployment.yaml
         
         # Apply Kubernetes manifests
-        kubectl apply -k k8s/overlays/staging/ || kubectl apply -f k8s/base/
+        kubectl apply -f k8s/base/ -n datacompass
         
         # Wait for deployment
         kubectl rollout status deployment/whatsapp-analytics-api -n datacompass --timeout=300s || echo "Deployment check completed"
@@ -198,7 +198,7 @@ jobs:
         sed -i "s|IMAGE_TAG_PLACEHOLDER|${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}|g" k8s/base/deployment.yaml
         
         # Apply Kubernetes manifests
-        kubectl apply -k k8s/overlays/production/
+        kubectl apply -f k8s/base/ -n datacompass
         
         # Wait for deployment
         kubectl rollout status deployment/whatsapp-analytics-api -n datacompass --timeout=600s || echo "Deployment check completed"
