@@ -34,9 +34,6 @@ COPY --from=builder /app/package*.json ./
 # Copiar código compilado
 COPY --from=builder /app/dist ./dist
 
-# Copiar arquivos de configuração necessários
-COPY .env.example ./
-
 # Alterar proprietário dos arquivos para o usuário nodejs
 RUN chown -R nodejs:nodejs /app
 USER nodejs
