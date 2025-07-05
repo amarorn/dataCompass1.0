@@ -9,8 +9,8 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  EKS_CLUSTER_NAME: datacompass-cluster
-  ECR_REPOSITORY: datacompass-api
+  EKS_CLUSTER_NAME: whatsapp-analytics-production
+  ECR_REPOSITORY: whatsapp-analytics-api
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -141,18 +141,18 @@ jobs:
         kubectl apply -k k8s/overlays/staging/ || kubectl apply -f k8s/base/
         
         # Wait for deployment
-        kubectl rollout status deployment/datacompass-api -n staging --timeout=300s || echo "Deployment check completed"
+        kubectl rollout status deployment/whatsapp-analytics-api -n datacompass --timeout=300s || echo "Deployment check completed"
         
     - name: Run smoke tests
       run: |
         echo "🧪 Running smoke tests..."
         
         # Get service URL (try different methods)
-        SERVICE_URL=$(kubectl get service datacompass-api-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "localhost")
+        SERVICE_URL=$(kubectl get service whatsapp-analytics-api-service -n datacompass -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "localhost")
         
         if [ "$SERVICE_URL" = "localhost" ]; then
           echo "⚠️ Load balancer not ready, using port-forward for testing"
-          kubectl port-forward service/datacompass-api-service 8080:3000 -n staging &
+          kubectl port-forward service/whatsapp-analytics-api-service 8080:80 -n datacompass &
           sleep 10
           SERVICE_URL="localhost:8080"
         fi
@@ -201,18 +201,18 @@ jobs:
         kubectl apply -k k8s/overlays/production/
         
         # Wait for deployment
-        kubectl rollout status deployment/datacompass-api -n production --timeout=600s || echo "Deployment check completed"
+        kubectl rollout status deployment/whatsapp-analytics-api -n datacompass --timeout=600s || echo "Deployment check completed"
         
     - name: Run production tests
       run: |
         echo "🚀 Running production tests..."
         
         # Get service URL
-        SERVICE_URL=$(kubectl get service datacompass-api-service -n production -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "localhost")
+        SERVICE_URL=$(kubectl get service whatsapp-analytics-api-service -n datacompass -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "localhost")
         
         if [ "$SERVICE_URL" = "localhost" ]; then
           echo "⚠️ Load balancer not ready, using port-forward for testing"
-          kubectl port-forward service/datacompass-api-service 8080:3000 -n production &
+          kubectl port-forward service/whatsapp-analytics-api-service 8080:80 -n datacompass &
           sleep 10
           SERVICE_URL="localhost:8080"
         fi
@@ -237,7 +237,7 @@ jobs:
       run: |
         echo "❌ Production deployment failed!"
         echo "🔄 Rolling back to previous version..."
-        kubectl rollout undo deployment/datacompass-api -n production || echo "Rollback attempted"
+        kubectl rollout undo deployment/whatsapp-analytics-api -n datacompass || echo "Rollback attempted"
 
   notify:
     name: Notify Results
