@@ -11,6 +11,7 @@ resources:
 - secret.yaml
 - ingress.yaml
 - hpa.yaml
+- mongodb-deployment.yaml
 
 commonLabels:
   app: whatsapp-analytics-api

@@ -2,12 +2,34 @@ import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middlewares/errorHandler';
 import { WhatsAppService, WhatsAppWebhookPayload } from '../../infrastructure/external/WhatsAppService';
 import { MessageProcessorService } from '../../application/services/MessageProcessorService';
+import { WhatsAppRegistrationService } from '../../application/services/WhatsAppRegistrationService';
+import { MongoConnection } from '../../infrastructure/database/MongoConnection';
+import { MongoUserRepository } from '../../infrastructure/database/MongoUserRepository';
 import { Client } from '../../domain/entities/Client';
 import { Interaction } from '../../domain/entities/Interaction';
 
 const router = Router();
 const whatsappService = new WhatsAppService();
 const messageProcessor = new MessageProcessorService();
+
+// Inicializar serviços de registro
+let registrationService: WhatsAppRegistrationService | null = null;
+
+// Inicializar MongoDB e serviços
+async function initializeServices() {
+  try {
+    const mongoConnection = MongoConnection.getInstance();
+    const db = await mongoConnection.connect();
+    const userRepository = new MongoUserRepository(db);
+    registrationService = new WhatsAppRegistrationService(userRepository);
+    console.log('✅ Registration services initialized');
+  } catch (error) {
+    console.error('❌ Failed to initialize registration services:', error);
+  }
+}
+
+// Inicializar serviços na primeira execução
+initializeServices();
 
 // GET /api/whatsapp/webhook - Verificação do webhook
 router.get('/webhook', asyncHandler(async (req: Request, res: Response) => {
@@ -69,47 +91,63 @@ router.post('/webhook', asyncHandler(async (req: Request, res: Response) => {
       try {
         console.log(`Processing message from ${message.from}:`, message.text?.body);
         
-        // Processar mensagem
-        const processedMessage = messageProcessor.processMessage(message);
-        console.log('Processed message:', {
-          type: processedMessage.interactionType,
-          sentiment: processedMessage.sentiment,
-          shouldRespond: processedMessage.shouldRespond,
-          extractedData: processedMessage.extractedData
-        });
-
-        // Marcar como lida
-        if (whatsappService.isConfigured()) {
-          await whatsappService.markAsRead(message.id);
+        // 1. Primeiro verificar se é um comando de registro
+        let registrationHandled = false;
+        if (registrationService && message.text?.body) {
+          const registrationResult = await registrationService.processMessage(message);
+          
+          if (registrationResult.shouldRespond && registrationResult.responseMessage) {
+            console.log(`📤 Sending registration response to ${message.from}`);
+            
+            if (whatsappService.isConfigured()) {
+              await whatsappService.sendTextMessage(message.from, registrationResult.responseMessage);
+            } else {
+              console.log(`📤 [SIMULATION] Registration response: ${registrationResult.responseMessage}`);
+            }
+            
+            registrationHandled = true;
+            console.log(`✅ Registration command processed: ${registrationResult.message}`);
+          }
         }
 
-        // Aqui seria implementada a lógica para:
-        // 1. Buscar ou criar cliente
-        // 2. Registrar interação
-        // 3. Gerar insights
-        // 4. Enviar resposta automática
+        // 2. Se não foi um comando de registro, processar normalmente
+        if (!registrationHandled) {
+          // Processar mensagem para análise
+          const processedMessage = messageProcessor.processMessage(message);
+          console.log('Processed message:', {
+            type: processedMessage.interactionType,
+            sentiment: processedMessage.sentiment,
+            shouldRespond: processedMessage.shouldRespond,
+            extractedData: processedMessage.extractedData
+          });
 
-        // Simular criação de cliente (em produção, usar repositório)
-        console.log(`📝 Would create/update client: ${message.from}`);
-        
-        // Simular registro de interação
-        console.log(`📊 Would register interaction:`, {
-          clientId: message.from,
-          type: processedMessage.interactionType,
-          content: message.text?.body,
-          sentiment: processedMessage.sentiment,
-          value: processedMessage.extractedData.value,
-          category: processedMessage.extractedData.category
-        });
+          // Simular criação de cliente (em produção, usar repositório)
+          console.log(`📝 Would create/update client: ${message.from}`);
+          
+          // Simular registro de interação
+          console.log(`📊 Would register interaction:`, {
+            clientId: message.from,
+            type: processedMessage.interactionType,
+            content: message.text?.body,
+            sentiment: processedMessage.sentiment,
+            value: processedMessage.extractedData.value,
+            category: processedMessage.extractedData.category
+          });
 
-        // Enviar resposta automática se necessário
-        if (processedMessage.shouldRespond && processedMessage.suggestedResponse) {
-          if (whatsappService.isConfigured()) {
-            console.log(`📤 Sending automatic response to ${message.from}`);
-            await whatsappService.sendTextMessage(message.from, processedMessage.suggestedResponse);
-          } else {
-            console.log(`📤 Would send response: ${processedMessage.suggestedResponse}`);
+          // Enviar resposta automática se necessário
+          if (processedMessage.shouldRespond && processedMessage.suggestedResponse) {
+            if (whatsappService.isConfigured()) {
+              console.log(`📤 Sending automatic response to ${message.from}`);
+              await whatsappService.sendTextMessage(message.from, processedMessage.suggestedResponse);
+            } else {
+              console.log(`📤 Would send response: ${processedMessage.suggestedResponse}`);
+            }
           }
+        }
+
+        // 3. Marcar como lida
+        if (whatsappService.isConfigured()) {
+          await whatsappService.markAsRead(message.id);
         }
 
       } catch (messageError) {
