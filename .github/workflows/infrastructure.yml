@@ -1,0 +1,230 @@
+name: Infrastructure Management
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'infrastructure/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infrastructure/**'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+        - plan
+        - apply
+        - destroy
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.5.0
+
+jobs:
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Terraform Format Check
+      run: |
+        cd infrastructure/terraform
+        terraform fmt -check
+        
+    - name: Terraform Init
+      run: |
+        cd infrastructure/terraform
+        terraform init
+        
+    - name: Terraform Validate
+      run: |
+        cd infrastructure/terraform
+        terraform validate
+
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: terraform-validate
+    if: github.event_name == 'pull_request' || github.event.inputs.action == 'plan'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Terraform Init
+      run: |
+        cd infrastructure/terraform
+        terraform init
+        
+    - name: Terraform Plan
+      run: |
+        cd infrastructure/terraform
+        terraform plan -var="environment=staging" -out=tfplan
+        
+    - name: Upload Plan
+      uses: actions/upload-artifact@v4
+      with:
+        name: terraform-plan
+        path: infrastructure/terraform/tfplan
+        retention-days: 5
+
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: terraform-validate
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.action == 'apply')
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Terraform Init
+      run: |
+        cd infrastructure/terraform
+        terraform init
+        
+    - name: Terraform Plan
+      run: |
+        cd infrastructure/terraform
+        terraform plan -var="environment=production" -out=tfplan
+        
+    - name: Terraform Apply
+      run: |
+        cd infrastructure/terraform
+        terraform apply -auto-approve tfplan
+        
+    - name: Output Infrastructure Info
+      run: |
+        cd infrastructure/terraform
+        echo "## 🏗️ Infrastructure Deployed Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### EKS Cluster" >> $GITHUB_STEP_SUMMARY
+        echo "- **Cluster Name**: $(terraform output -raw cluster_name)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Cluster Endpoint**: $(terraform output -raw cluster_endpoint)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Region**: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ECR Repository" >> $GITHUB_STEP_SUMMARY
+        echo "- **Repository URL**: $(terraform output -raw ecr_repository_url)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. Configure kubectl: \`aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $(terraform output -raw cluster_name)\`" >> $GITHUB_STEP_SUMMARY
+        echo "2. Deploy application: \`kubectl apply -k k8s/overlays/production/\`" >> $GITHUB_STEP_SUMMARY
+
+  terraform-destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'destroy'
+    environment: destruction
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Terraform Init
+      run: |
+        cd infrastructure/terraform
+        terraform init
+        
+    - name: Terraform Destroy
+      run: |
+        cd infrastructure/terraform
+        terraform destroy -auto-approve -var="environment=production"
+        
+    - name: Notify Destruction
+      run: |
+        echo "🗑️ Infrastructure destroyed successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "All AWS resources have been removed." >> $GITHUB_STEP_SUMMARY
+
+  security-check:
+    name: Infrastructure Security Check
+    runs-on: ubuntu-latest
+    needs: terraform-validate
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Checkov
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: infrastructure/terraform
+        framework: terraform
+        output_format: sarif
+        output_file_path: checkov-results.sarif
+        
+    - name: Upload Checkov results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: checkov-results.sarif
+        
+    - name: Run TFSec
+      uses: aquasecurity/tfsec-action@v1.0.3
+      with:
+        working_directory: infrastructure/terraform
+        format: sarif
+        output: tfsec-results.sarif
+        
+    - name: Upload TFSec results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: tfsec-results.sarif
+
