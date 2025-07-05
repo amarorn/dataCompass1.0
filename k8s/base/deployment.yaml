@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whatsapp-analytics-api
+  labels:
+    app: whatsapp-analytics-api
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: whatsapp-analytics-api
+  template:
+    metadata:
+      labels:
+        app: whatsapp-analytics-api
+        version: v1
+    spec:
+      containers:
+      - name: whatsapp-analytics-api
+        image: whatsapp-analytics-api:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-analytics-secrets
+              key: jwt-secret
+        - name: WHATSAPP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-analytics-secrets
+              key: whatsapp-token
+        - name: WHATSAPP_PHONE_NUMBER_ID
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-analytics-secrets
+              key: whatsapp-phone-number-id
+        - name: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-analytics-secrets
+              key: whatsapp-webhook-verify-token
+        - name: WHATSAPP_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-analytics-secrets
+              key: whatsapp-webhook-secret
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-analytics-secrets
+              key: database-url
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      securityContext:
+        fsGroup: 1001
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
