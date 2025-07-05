@@ -1,5 +1,9 @@
-# Multi-stage build para otimizar o tamanho da imagem
-FROM node:20-alpine AS builder
+# Dockerfile simplificado e robusto para produção
+FROM node:20-alpine
+
+# Criar usuário não-root para segurança
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
 
 # Definir diretório de trabalho
 WORKDIR /app
@@ -11,28 +15,17 @@ COPY tsconfig.json ./
 # Instalar dependências
 RUN npm ci --only=production && npm cache clean --force
 
+# Instalar dependências de desenvolvimento para build
+RUN npm install typescript ts-node @types/node --save-dev
+
 # Copiar código fonte
 COPY src/ ./src/
 
 # Build da aplicação TypeScript
 RUN npm run build
 
-# Estágio de produção
-FROM node:20-alpine AS production
-
-# Criar usuário não-root para segurança
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-# Definir diretório de trabalho
-WORKDIR /app
-
-# Copiar dependências do estágio builder
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-
-# Copiar código compilado
-COPY --from=builder /app/dist ./dist
+# Remover dependências de desenvolvimento
+RUN npm prune --production
 
 # Alterar proprietário dos arquivos para o usuário nodejs
 RUN chown -R nodejs:nodejs /app
