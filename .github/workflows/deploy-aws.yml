@@ -137,8 +137,13 @@ jobs:
         # Update image tag
         sed -i "s|IMAGE_TAG_PLACEHOLDER|${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}|g" k8s/base/deployment.yaml
         
-        # Apply Kubernetes manifests
-        kubectl apply -f k8s/base/ -n datacompass
+        # Apply Kubernetes manifests (excluding kustomization.yaml)
+        kubectl apply -f k8s/base/configmap.yaml -n datacompass
+        kubectl apply -f k8s/base/secret.yaml -n datacompass
+        kubectl apply -f k8s/base/deployment.yaml -n datacompass
+        kubectl apply -f k8s/base/service.yaml -n datacompass
+        kubectl apply -f k8s/base/hpa.yaml -n datacompass
+        kubectl apply -f k8s/base/ingress.yaml -n datacompass
         
         # Wait for deployment
         kubectl rollout status deployment/whatsapp-analytics-api -n datacompass --timeout=300s || echo "Deployment check completed"
@@ -197,8 +202,13 @@ jobs:
         # Update image tag
         sed -i "s|IMAGE_TAG_PLACEHOLDER|${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}|g" k8s/base/deployment.yaml
         
-        # Apply Kubernetes manifests
-        kubectl apply -f k8s/base/ -n datacompass
+        # Apply Kubernetes manifests (excluding kustomization.yaml)
+        kubectl apply -f k8s/base/configmap.yaml -n datacompass
+        kubectl apply -f k8s/base/secret.yaml -n datacompass
+        kubectl apply -f k8s/base/deployment.yaml -n datacompass
+        kubectl apply -f k8s/base/service.yaml -n datacompass
+        kubectl apply -f k8s/base/hpa.yaml -n datacompass
+        kubectl apply -f k8s/base/ingress.yaml -n datacompass
         
         # Wait for deployment
         kubectl rollout status deployment/whatsapp-analytics-api -n datacompass --timeout=600s || echo "Deployment check completed"
