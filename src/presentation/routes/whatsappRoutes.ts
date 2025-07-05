@@ -39,18 +39,23 @@ router.get('/webhook', asyncHandler(async (req: Request, res: Response) => {
 
   console.log('Webhook verification request:', { mode, token });
 
-  if (mode === 'subscribe' && token === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+  // Usar token padrão se não estiver configurado
+  const expectedToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || 'datacompass_webhook_2025';
+
+  if (mode === 'subscribe' && token === expectedToken) {
     console.log('✅ Webhook verified successfully');
     res.status(200).send(challenge);
   } else {
     console.log('❌ Webhook verification failed');
+    console.log('Expected token:', expectedToken);
+    console.log('Received token:', token);
     res.status(403).json({
       success: false,
       error: {
         message: 'Webhook verification failed',
         statusCode: 403,
         details: {
-          expectedToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ? '[CONFIGURED]' : '[NOT_CONFIGURED]',
+          expectedToken: expectedToken ? '[CONFIGURED]' : '[NOT_CONFIGURED]',
           receivedMode: mode,
           receivedToken: token ? '[PROVIDED]' : '[NOT_PROVIDED]'
         }

@@ -11,6 +11,7 @@ dotenv.config();
 import { clientRoutes } from './presentation/routes/clientRoutes';
 import { analyticsRoutes } from './presentation/routes/analyticsRoutes';
 import { whatsappRoutes } from './presentation/routes/whatsappRoutes';
+import { userRoutes } from './presentation/routes/userRoutes';
 
 // Importar middlewares
 import { errorHandler } from './presentation/middlewares/errorHandler';
@@ -61,6 +62,7 @@ class App {
     this.app.use('/api/clients', clientRoutes);
     this.app.use('/api/analytics', analyticsRoutes);
     this.app.use('/api/whatsapp', whatsappRoutes);
+    this.app.use('/api/users', userRoutes);
   }
 
   private initializeErrorHandling(): void {
