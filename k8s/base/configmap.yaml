@@ -13,4 +13,39 @@ data:
   RATE_LIMIT_WINDOW_MS: "900000"
   RATE_LIMIT_MAX_REQUESTS: "100"
   JWT_EXPIRES_IN: "24h"
+  
+  # Domain Configuration
+  DOMAIN_NAME: "ultimatesystems.io"
+  API_DOMAIN: "api.ultimatesystems.io"
+  ADMIN_DOMAIN: "administrativo.ultimatesystems.io"
+  DASHBOARD_DOMAIN: "dashboard.ultimatesystems.io"
+  BASE_URL: "https://ultimatesystems.io"
+  API_BASE_URL: "https://api.ultimatesystems.io"
+  
+  # SSL/TLS Configuration
+  SSL_ENABLED: "true"
+  FORCE_HTTPS: "true"
+  HSTS_MAX_AGE: "31536000"
+  
+  # Load Balancer Configuration
+  TRUST_PROXY: "true"
+  PROXY_PROTOCOL: "true"
+  
+  # Health Check Configuration
+  HEALTH_CHECK_PATH: "/health"
+  HEALTH_CHECK_TIMEOUT: "5000"
+  
+  # Webhook Configuration
+  WEBHOOK_BASE_URL: "https://api.ultimatesystems.io/api/whatsapp/webhook"
+  WEBHOOK_VERIFY_TOKEN: "datacompass_webhook_2025"
+  
+  # Application URLs
+  ADMIN_PANEL_URL: "https://administrativo.ultimatesystems.io"
+  DASHBOARD_URL: "https://dashboard.ultimatesystems.io"
+  API_DOCS_URL: "https://api.ultimatesystems.io/docs"
+  
+  # Security Headers
+  SECURITY_HEADERS_ENABLED: "true"
+  CSP_ENABLED: "true"
+  REFERRER_POLICY: "strict-origin-when-cross-origin"
 

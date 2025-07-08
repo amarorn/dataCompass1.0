@@ -86,7 +86,7 @@ variable "enable_external_dns" {
 variable "domain_name" {
   description = "Domain name for the application"
   type        = string
-  default     = "whatsapp-analytics.com"
+  default     = "ultimatesystems.io"
 }
 
 variable "certificate_arn" {

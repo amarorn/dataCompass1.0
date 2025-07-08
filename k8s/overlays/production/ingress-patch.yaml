@@ -3,12 +3,56 @@ kind: Ingress
 metadata:
   name: whatsapp-analytics-ingress
   annotations:
-    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:us-east-1:ACCOUNT:certificate/CERTIFICATE-ID"
-    alb.ingress.kubernetes.io/wafv2-acl-arn: "arn:aws:wafv2:us-east-1:ACCOUNT:webacl/WEBACL-NAME/WEBACL-ID"
-    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
+    alb.ingress.kubernetes.io/certificate-arn: "CERTIFICATE_ARN_PLACEHOLDER"
+    alb.ingress.kubernetes.io/wafv2-acl-arn: "WAF_ACL_ARN_PLACEHOLDER"
+    alb.ingress.kubernetes.io/load-balancer-attributes: |
+      idle_timeout.timeout_seconds=60,
+      routing.http2.enabled=true,
+      access_logs.s3.enabled=true,
+      access_logs.s3.bucket=ultimatesystems-alb-logs,
+      access_logs.s3.prefix=production
+    alb.ingress.kubernetes.io/security-groups: "SECURITY_GROUP_PLACEHOLDER"
+    alb.ingress.kubernetes.io/ssl-policy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+    alb.ingress.kubernetes.io/backend-protocol: "HTTP"
+    alb.ingress.kubernetes.io/target-group-attributes: |
+      stickiness.enabled=false,
+      deregistration_delay.timeout_seconds=60,
+      stickiness.type=lb_cookie,
+      stickiness.lb_cookie.duration_seconds=86400
 spec:
   rules:
-  - host: api.whatsapp-analytics.com
+  # Production domain configurations with enhanced security
+  - host: ultimatesystems.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: whatsapp-analytics-api-service
+            port:
+              number: 80
+  - host: administrativo.ultimatesystems.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: whatsapp-analytics-api-service
+            port:
+              number: 80
+  - host: dashboard.ultimatesystems.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: whatsapp-analytics-api-service
+            port:
+              number: 80
+  - host: api.ultimatesystems.io
     http:
       paths:
       - path: /
