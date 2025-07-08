@@ -1,23 +1,28 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: whatsapp-analytics-api
+  name: datacompass-api
   labels:
-    app: whatsapp-analytics-api
+    app: datacompass-api
+    component: backend
+    tier: application
     version: v1
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
-      app: whatsapp-analytics-api
+      app: datacompass-api
+      component: backend
   template:
     metadata:
       labels:
-        app: whatsapp-analytics-api
+        app: datacompass-api
+        component: backend
+        tier: application
         version: v1
     spec:
       containers:
-      - name: whatsapp-analytics-api
+      - name: api-backend
         image: IMAGE_TAG_PLACEHOLDER
         ports:
         - containerPort: 3000
