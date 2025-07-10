@@ -13,6 +13,7 @@ env:
   ECR_REPOSITORY: datacompass-api
   IMAGE_TAG: ${{ github.sha }}
   NAMESPACE: datacompass
+  AWS_ACCOUNT_ID: 028425947301
 
 jobs:
   validate-prerequisites:
@@ -133,8 +134,8 @@ jobs:
         echo "DEBUG: AWS_REGION=${{ env.AWS_REGION }}"
         echo "DEBUG: ECR_REPOSITORY=${{ env.ECR_REPOSITORY }}"
         echo "DEBUG: IMAGE_TAG=${{ env.IMAGE_TAG }}"
-        IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
-        LATEST_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest"
+        IMAGE_URI="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
+        LATEST_URI="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest"
         echo "✅ Building image: $IMAGE_URI"
         docker build -t $IMAGE_URI .
         docker tag $IMAGE_URI $LATEST_URI
@@ -162,7 +163,7 @@ jobs:
           echo "❌ image-uri está vazio, não será feito o push."
           exit 1
         fi
-        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+        docker push ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
 
   deploy-to-staging:
     name: Deploy to Staging
