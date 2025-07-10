@@ -13,7 +13,7 @@ COPY package*.json ./
 COPY tsconfig.json ./
 
 # Instalar dependências
-RUN npm ci --only=production && npm cache clean --force
+RUN npm install --only=production && npm cache clean --force
 
 # Instalar dependências de desenvolvimento para build
 RUN npm install typescript ts-node @types/node --save-dev
