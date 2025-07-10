@@ -1,11 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: datacompass-api-service
+  name: whatsapp-analytics-api-service
   labels:
-    app: datacompass-api
-    component: backend
-    tier: application
+    app: whatsapp-analytics-api
 spec:
   type: ClusterIP
   ports:
@@ -14,6 +12,5 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app: datacompass-api
-    component: backend
+    app: whatsapp-analytics-api
 

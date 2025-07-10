@@ -1,24 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: whatsapp-analytics-api
+  name: datacompass-api
   labels:
-    app: whatsapp-analytics-api
+    app: datacompass-api
+    component: backend
     version: v1
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
-      app: whatsapp-analytics-api
+      app: datacompass-api
+      component: backend
   template:
     metadata:
       labels:
-        app: whatsapp-analytics-api
+        app: datacompass-api
+        component: backend
         version: v1
     spec:
       containers:
-      - name: whatsapp-analytics-api
-        image: IMAGE_TAG_PLACEHOLDER
+      - name: datacompass-api
+        image: 028425947301.dkr.ecr.us-east-1.amazonaws.com/datacompass-api:latest
         ports:
         - containerPort: 3000
           name: http
@@ -27,35 +30,37 @@ spec:
           value: "production"
         - name: PORT
           value: "3000"
+        - name: CORS_ORIGIN
+          value: "https://dashboard.ultimatesystems.io,https://ultimatesystems.io"
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
-              name: whatsapp-analytics-secrets
+              name: datacompass-secrets
               key: jwt-secret
         - name: WHATSAPP_TOKEN
           valueFrom:
             secretKeyRef:
-              name: whatsapp-analytics-secrets
+              name: datacompass-secrets
               key: whatsapp-token
         - name: WHATSAPP_PHONE_NUMBER_ID
           valueFrom:
             secretKeyRef:
-              name: whatsapp-analytics-secrets
+              name: datacompass-secrets
               key: whatsapp-phone-number-id
         - name: WHATSAPP_WEBHOOK_VERIFY_TOKEN
           valueFrom:
             secretKeyRef:
-              name: whatsapp-analytics-secrets
+              name: datacompass-secrets
               key: whatsapp-webhook-verify-token
         - name: WHATSAPP_WEBHOOK_SECRET
           valueFrom:
             secretKeyRef:
-              name: whatsapp-analytics-secrets
+              name: datacompass-secrets
               key: whatsapp-webhook-secret
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: whatsapp-analytics-secrets
+              name: datacompass-secrets
               key: database-url
         resources:
           requests:
@@ -102,4 +107,22 @@ spec:
         fsGroup: 1001
       restartPolicy: Always
       terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datacompass-api-service
+  labels:
+    app: datacompass-api
+    component: backend
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: datacompass-api
+    component: backend
 

@@ -1,0 +1,70 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: datacompass-unified
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+# Namespace
+namespace: default
+
+# Recursos a serem aplicados
+resources:
+  - backend-deployment.yaml
+  - frontend-deployment.yaml
+  - ingress-unified.yaml
+  - secrets.yaml
+
+# Labels comuns
+commonLabels:
+  project: datacompass
+  environment: production
+  managed-by: kustomize
+
+# Anotações comuns
+commonAnnotations:
+  deployment.kubernetes.io/revision: "1"
+  app.kubernetes.io/version: "1.0.0"
+
+# Configurações de imagens
+images:
+  - name: 028425947301.dkr.ecr.us-east-1.amazonaws.com/datacompass-api
+    newTag: latest
+  - name: 028425947301.dkr.ecr.us-east-1.amazonaws.com/datacompass-frontend
+    newTag: latest
+
+# Patches para configurações específicas
+patchesStrategicMerge:
+  - |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: datacompass-api
+    spec:
+      template:
+        metadata:
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "3000"
+            prometheus.io/path: "/metrics"
+  - |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: datacompass-frontend
+    spec:
+      template:
+        metadata:
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "8080"
+            prometheus.io/path: "/metrics"
+
+# Configurações de recursos
+replicas:
+  - name: datacompass-api
+    count: 2
+  - name: datacompass-frontend
+    count: 2
+

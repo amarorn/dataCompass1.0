@@ -1,0 +1,169 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datacompass-frontend-config
+  labels:
+    app: datacompass-frontend
+    component: frontend
+data:
+  # URL da API do backend (usando service interno do Kubernetes)
+  api-url: "http://datacompass-api-service.default.svc.cluster.local"
+  
+  # URL da API externa (para requests do browser)
+  external-api-url: "https://api.ultimatesystems.io"
+  
+  # Configurações da aplicação
+  app-name: "DataCompass"
+  app-version: "1.0.0"
+  
+  # Domínios configurados
+  domain-name: "ultimatesystems.io"
+  api-domain: "api.ultimatesystems.io"
+  admin-domain: "administrativo.ultimatesystems.io"
+  dashboard-domain: "dashboard.ultimatesystems.io"
+  
+  # URLs base
+  base-url: "https://dashboard.ultimatesystems.io"
+  api-base-url: "https://api.ultimatesystems.io"
+  
+  # Configurações do Nginx
+  nginx-worker-processes: "auto"
+  nginx-worker-connections: "1024"
+  
+  # CORS Configuration
+  cors-origin: "https://dashboard.ultimatesystems.io,https://api.ultimatesystems.io"
+  cors-credentials: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datacompass-frontend
+  labels:
+    app: datacompass-frontend
+    component: frontend
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: datacompass-frontend
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: datacompass-frontend
+        component: frontend
+        version: v1
+    spec:
+      containers:
+      - name: datacompass-frontend
+        image: 028425947301.dkr.ecr.us-east-1.amazonaws.com/datacompass-frontend:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: VITE_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: datacompass-frontend-config
+              key: external-api-url
+        - name: VITE_API_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: datacompass-frontend-config
+              key: api-base-url
+        - name: VITE_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: datacompass-frontend-config
+              key: base-url
+        - name: VITE_APP_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: datacompass-frontend-config
+              key: app-name
+        - name: VITE_APP_VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: datacompass-frontend-config
+              key: app-version
+        - name: VITE_DOMAIN_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: datacompass-frontend-config
+              key: domain-name
+        - name: VITE_API_DOMAIN
+          valueFrom:
+            configMapKeyRef:
+              name: datacompass-frontend-config
+              key: api-domain
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
+      securityContext:
+        fsGroup: 1001
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datacompass-frontend-service
+  labels:
+    app: datacompass-frontend
+    component: frontend
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: datacompass-frontend
+    component: frontend
+
