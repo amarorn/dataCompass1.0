@@ -10,7 +10,7 @@ on:
 env:
   AWS_REGION: us-east-1
   EKS_CLUSTER_NAME: whatsapp-analytics-production
-  ECR_REPOSITORY: whatsapp-analytics-api
+  ECR_REPOSITORY: datacompass-api
   IMAGE_TAG: ${{ github.sha }}
   NAMESPACE: datacompass
 
