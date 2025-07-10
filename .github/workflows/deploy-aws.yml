@@ -173,9 +173,28 @@ jobs:
         
     - name: Deploy to staging
       run: |
+        # Verify image URI is available
+        IMAGE_URI="${{ needs.build-and-push.outputs.image-uri }}"
+        if [ -z "$IMAGE_URI" ]; then
+          echo "❌ Error: Image URI is empty"
+          echo "Available outputs: ${{ toJson(needs.build-and-push.outputs) }}"
+          exit 1
+        fi
+        
+        echo "✅ Using image: $IMAGE_URI"
+        
         # Create temporary deployment file with correct image
         cp k8s/base/deployment.yaml deployment-temp.yaml
-        sed -i "s|IMAGE_TAG_PLACEHOLDER|${{ needs.build-and-push.outputs.image-uri }}|g" deployment-temp.yaml
+        sed -i "s|IMAGE_TAG_PLACEHOLDER|$IMAGE_URI|g" deployment-temp.yaml
+        
+        # Verify the replacement worked
+        if grep -q "IMAGE_TAG_PLACEHOLDER" deployment-temp.yaml; then
+          echo "❌ Error: IMAGE_TAG_PLACEHOLDER was not replaced"
+          cat deployment-temp.yaml
+          exit 1
+        fi
+        
+        echo "✅ Image replacement successful"
         
         # Apply Kubernetes manifests
         kubectl apply -f k8s/base/namespace.yaml || echo "Namespace already exists"
