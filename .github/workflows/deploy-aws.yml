@@ -151,7 +151,12 @@ jobs:
         
     - name: Push image to ECR
       run: |
-        docker push ${{ steps.build-image.outputs.image_uri }}
+        if [ -n "${{ steps.build-image.outputs.image-uri }}" ]; then
+          docker push ${{ steps.build-image.outputs.image-uri }}
+        else
+          echo "❌ image-uri está vazio, não será feito o push."
+          exit 1
+        fi
         docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
 
   deploy-to-staging:
