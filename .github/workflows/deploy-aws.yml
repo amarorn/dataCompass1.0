@@ -137,10 +137,14 @@ jobs:
         echo "image-uri=$IMAGE_URI" >> $GITHUB_OUTPUT
         echo "✅ Image built and tagged successfully"
         
+    - name: Debug image-uri para scan
+      run: |
+        echo "IMAGE_URI para scan: ${{ steps.build-image.outputs.image-uri }}"
+
     - name: Scan Docker image
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: '${{ steps.build-image.outputs.image_uri }}'
+        image-ref: '${{ steps.build-image.outputs.image-uri }}'
         format: 'table'
         severity: 'HIGH,CRITICAL'
         exit-code: '0'
