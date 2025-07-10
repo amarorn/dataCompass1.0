@@ -160,6 +160,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Debug outputs recebidos
+      run: |
+        echo "Outputs recebidos do build-and-push: ${{ toJson(needs.build-and-push.outputs) }}"
+        echo "IMAGE_URI recebido: ${{ needs.build-and-push.outputs.image-uri }}"
+      
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
