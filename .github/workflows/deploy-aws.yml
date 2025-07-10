@@ -119,13 +119,22 @@ jobs:
     - name: Build and tag Docker image
       id: build-image
       run: |
+        # Verify AWS_ACCOUNT_ID is available
+        if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+          echo "❌ Error: AWS_ACCOUNT_ID secret is not configured"
+          exit 1
+        fi
+        
         IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
         LATEST_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest"
+        
+        echo "✅ Building image: $IMAGE_URI"
         
         docker build -t $IMAGE_URI .
         docker tag $IMAGE_URI $LATEST_URI
         
         echo "image-uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+        echo "✅ Image built and tagged successfully"
         
     - name: Scan Docker image
       uses: aquasecurity/trivy-action@master
