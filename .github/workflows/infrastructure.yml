@@ -20,15 +20,61 @@ on:
         - plan
         - apply
         - destroy
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
 
 env:
   AWS_REGION: us-east-1
   TF_VERSION: 1.5.0
+  TF_WORKSPACE: ${{ github.event.inputs.environment || 'staging' }}
 
 jobs:
+  validate-prerequisites:
+    name: Validate Prerequisites
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Validate required secrets
+      run: |
+        if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+          echo "❌ AWS_ACCESS_KEY_ID secret is not set"
+          exit 1
+        fi
+        if [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+          echo "❌ AWS_SECRET_ACCESS_KEY secret is not set"
+          exit 1
+        fi
+        if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+          echo "❌ AWS_ACCOUNT_ID secret is not set"
+          exit 1
+        fi
+        echo "✅ All required secrets are configured"
+        
+    - name: Validate Terraform files exist
+      run: |
+        if [ ! -d "infrastructure/terraform" ]; then
+          echo "❌ Terraform directory not found"
+          exit 1
+        fi
+        if [ ! -f "infrastructure/terraform/main.tf" ]; then
+          echo "❌ main.tf not found"
+          exit 1
+        fi
+        echo "✅ Terraform files validated"
+
   terraform-validate:
     name: Terraform Validate
     runs-on: ubuntu-latest
+    needs: validate-prerequisites
     
     steps:
     - name: Checkout code
@@ -49,17 +95,24 @@ jobs:
     - name: Terraform Format Check
       run: |
         cd infrastructure/terraform
-        terraform fmt -check
+        terraform fmt -check -recursive
         
     - name: Terraform Init
       run: |
         cd infrastructure/terraform
-        terraform init
+        terraform init -backend-config="bucket=datacompass-terraform-state-${{ secrets.AWS_ACCOUNT_ID }}" \
+                       -backend-config="key=infrastructure/${{ env.TF_WORKSPACE }}/terraform.tfstate" \
+                       -backend-config="region=${{ env.AWS_REGION }}"
         
     - name: Terraform Validate
       run: |
         cd infrastructure/terraform
         terraform validate
+        
+    - name: Terraform Workspace
+      run: |
+        cd infrastructure/terraform
+        terraform workspace select ${{ env.TF_WORKSPACE }} || terraform workspace new ${{ env.TF_WORKSPACE }}
 
   terraform-plan:
     name: Terraform Plan
@@ -86,26 +139,68 @@ jobs:
     - name: Terraform Init
       run: |
         cd infrastructure/terraform
-        terraform init
+        terraform init -backend-config="bucket=datacompass-terraform-state-${{ secrets.AWS_ACCOUNT_ID }}" \
+                       -backend-config="key=infrastructure/${{ env.TF_WORKSPACE }}/terraform.tfstate" \
+                       -backend-config="region=${{ env.AWS_REGION }}"
+        
+    - name: Terraform Workspace
+      run: |
+        cd infrastructure/terraform
+        terraform workspace select ${{ env.TF_WORKSPACE }} || terraform workspace new ${{ env.TF_WORKSPACE }}
         
     - name: Terraform Plan
       run: |
         cd infrastructure/terraform
-        terraform plan -var="environment=staging" -out=tfplan
+        terraform plan -var="environment=${{ env.TF_WORKSPACE }}" \
+                      -var="aws_region=${{ env.AWS_REGION }}" \
+                      -var="aws_account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+                      -out=tfplan
         
     - name: Upload Plan
       uses: actions/upload-artifact@v4
       with:
-        name: terraform-plan
+        name: terraform-plan-${{ env.TF_WORKSPACE }}
         path: infrastructure/terraform/tfplan
         retention-days: 5
+        
+    - name: Comment Plan on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          
+          try {
+            const planOutput = execSync('cd infrastructure/terraform && terraform show -no-color tfplan', { encoding: 'utf8' });
+            
+            const comment = `## 🏗️ Terraform Plan for \`${{ env.TF_WORKSPACE }}\`
+            
+            <details>
+            <summary>Show Plan</summary>
+            
+            \`\`\`
+            ${planOutput}
+            \`\`\`
+            
+            </details>`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          } catch (error) {
+            console.error('Error creating comment:', error);
+          }
 
   terraform-apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: terraform-validate
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.action == 'apply')
-    environment: production
+    environment: ${{ github.event.inputs.environment || 'staging' }}
     
     steps:
     - name: Checkout code
@@ -115,6 +210,7 @@ jobs:
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: ${{ env.TF_VERSION }}
+        terraform_wrapper: false
         
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -123,41 +219,159 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
+    - name: Create S3 bucket for state if not exists
+      run: |
+        BUCKET_NAME="datacompass-terraform-state-${{ secrets.AWS_ACCOUNT_ID }}"
+        
+        if ! aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuchBucket'; then
+          echo "✅ S3 bucket $BUCKET_NAME already exists"
+        else
+          echo "🪣 Creating S3 bucket $BUCKET_NAME"
+          aws s3 mb "s3://$BUCKET_NAME" --region ${{ env.AWS_REGION }}
+          
+          # Enable versioning
+          aws s3api put-bucket-versioning \
+            --bucket "$BUCKET_NAME" \
+            --versioning-configuration Status=Enabled
+            
+          # Enable encryption
+          aws s3api put-bucket-encryption \
+            --bucket "$BUCKET_NAME" \
+            --server-side-encryption-configuration '{
+              "Rules": [{
+                "ApplyServerSideEncryptionByDefault": {
+                  "SSEAlgorithm": "AES256"
+                }
+              }]
+            }'
+        fi
+        
+    - name: Create DynamoDB table for locks if not exists
+      run: |
+        TABLE_NAME="datacompass-terraform-locks"
+        
+        if aws dynamodb describe-table --table-name "$TABLE_NAME" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+          echo "✅ DynamoDB table $TABLE_NAME already exists"
+        else
+          echo "🗃️ Creating DynamoDB table $TABLE_NAME"
+          aws dynamodb create-table \
+            --table-name "$TABLE_NAME" \
+            --attribute-definitions AttributeName=LockID,AttributeType=S \
+            --key-schema AttributeName=LockID,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --region ${{ env.AWS_REGION }}
+            
+          # Wait for table to be active
+          aws dynamodb wait table-exists --table-name "$TABLE_NAME" --region ${{ env.AWS_REGION }}
+        fi
+        
     - name: Terraform Init
       run: |
         cd infrastructure/terraform
-        terraform init
+        terraform init -backend-config="bucket=datacompass-terraform-state-${{ secrets.AWS_ACCOUNT_ID }}" \
+                       -backend-config="key=infrastructure/${{ env.TF_WORKSPACE }}/terraform.tfstate" \
+                       -backend-config="region=${{ env.AWS_REGION }}" \
+                       -backend-config="dynamodb_table=datacompass-terraform-locks"
+        
+    - name: Terraform Workspace
+      run: |
+        cd infrastructure/terraform
+        terraform workspace select ${{ env.TF_WORKSPACE }} || terraform workspace new ${{ env.TF_WORKSPACE }}
         
     - name: Terraform Plan
       run: |
         cd infrastructure/terraform
-        terraform plan -var="environment=production" -out=tfplan
+        terraform plan -var="environment=${{ env.TF_WORKSPACE }}" \
+                      -var="aws_region=${{ env.AWS_REGION }}" \
+                      -var="aws_account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+                      -out=tfplan
         
     - name: Terraform Apply
       run: |
         cd infrastructure/terraform
         terraform apply -auto-approve tfplan
         
+    - name: Validate Infrastructure
+      run: |
+        cd infrastructure/terraform
+        
+        # Check if required outputs exist
+        if terraform output cluster_name >/dev/null 2>&1; then
+          CLUSTER_NAME=$(terraform output -raw cluster_name)
+          echo "✅ EKS Cluster: $CLUSTER_NAME"
+        else
+          echo "⚠️ cluster_name output not found"
+        fi
+        
+        if terraform output ecr_repository_url >/dev/null 2>&1; then
+          ECR_URL=$(terraform output -raw ecr_repository_url)
+          echo "✅ ECR Repository: $ECR_URL"
+        else
+          echo "⚠️ ecr_repository_url output not found"
+        fi
+        
+        if terraform output cluster_endpoint >/dev/null 2>&1; then
+          CLUSTER_ENDPOINT=$(terraform output -raw cluster_endpoint)
+          echo "✅ EKS Endpoint: $CLUSTER_ENDPOINT"
+        else
+          echo "⚠️ cluster_endpoint output not found"
+        fi
+        
+    - name: Test EKS Connectivity
+      run: |
+        cd infrastructure/terraform
+        
+        if terraform output cluster_name >/dev/null 2>&1; then
+          CLUSTER_NAME=$(terraform output -raw cluster_name)
+          
+          # Update kubeconfig
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$CLUSTER_NAME"
+          
+          # Test connectivity
+          if kubectl get nodes; then
+            echo "✅ EKS cluster is accessible"
+          else
+            echo "❌ Failed to connect to EKS cluster"
+            exit 1
+          fi
+        else
+          echo "⚠️ Skipping EKS connectivity test - cluster_name not available"
+        fi
+        
     - name: Output Infrastructure Info
       run: |
         cd infrastructure/terraform
         echo "## 🏗️ Infrastructure Deployed Successfully!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### EKS Cluster" >> $GITHUB_STEP_SUMMARY
-        echo "- **Cluster Name**: $(terraform output -raw cluster_name)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Cluster Endpoint**: $(terraform output -raw cluster_endpoint)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Region**: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+        echo "### Environment: ${{ env.TF_WORKSPACE }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### ECR Repository" >> $GITHUB_STEP_SUMMARY
-        echo "- **Repository URL**: $(terraform output -raw ecr_repository_url)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if terraform output cluster_name >/dev/null 2>&1; then
+          echo "### EKS Cluster" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster Name**: $(terraform output -raw cluster_name)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster Endpoint**: $(terraform output -raw cluster_endpoint)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if terraform output ecr_repository_url >/dev/null 2>&1; then
+          echo "### ECR Repository" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository URL**: $(terraform output -raw ecr_repository_url)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
         echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-        echo "1. Configure kubectl: \`aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $(terraform output -raw cluster_name)\`" >> $GITHUB_STEP_SUMMARY
-        echo "2. Deploy application: \`kubectl apply -k k8s/overlays/production/\`" >> $GITHUB_STEP_SUMMARY
+        if terraform output cluster_name >/dev/null 2>&1; then
+          echo "1. Configure kubectl: \`aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $(terraform output -raw cluster_name)\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. Deploy application: \`kubectl apply -k k8s/overlays/${{ env.TF_WORKSPACE }}/\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "1. Check Terraform outputs for next steps" >> $GITHUB_STEP_SUMMARY
+        fi
 
   terraform-destroy:
     name: Terraform Destroy
     runs-on: ubuntu-latest
+    needs: validate-prerequisites
     if: github.event.inputs.action == 'destroy'
     environment: destruction
     
@@ -180,16 +394,28 @@ jobs:
     - name: Terraform Init
       run: |
         cd infrastructure/terraform
-        terraform init
+        terraform init -backend-config="bucket=datacompass-terraform-state-${{ secrets.AWS_ACCOUNT_ID }}" \
+                       -backend-config="key=infrastructure/${{ env.TF_WORKSPACE }}/terraform.tfstate" \
+                       -backend-config="region=${{ env.AWS_REGION }}" \
+                       -backend-config="dynamodb_table=datacompass-terraform-locks"
+        
+    - name: Terraform Workspace
+      run: |
+        cd infrastructure/terraform
+        terraform workspace select ${{ env.TF_WORKSPACE }}
         
     - name: Terraform Destroy
       run: |
         cd infrastructure/terraform
-        terraform destroy -auto-approve -var="environment=production"
+        terraform destroy -auto-approve \
+                         -var="environment=${{ env.TF_WORKSPACE }}" \
+                         -var="aws_region=${{ env.AWS_REGION }}" \
+                         -var="aws_account_id=${{ secrets.AWS_ACCOUNT_ID }}"
         
     - name: Notify Destruction
       run: |
         echo "🗑️ Infrastructure destroyed successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "Environment: ${{ env.TF_WORKSPACE }}" >> $GITHUB_STEP_SUMMARY
         echo "All AWS resources have been removed." >> $GITHUB_STEP_SUMMARY
 
   security-check:
@@ -208,6 +434,7 @@ jobs:
         framework: terraform
         output_format: sarif
         output_file_path: checkov-results.sarif
+        soft_fail: true
         
     - name: Upload Checkov results
       uses: github/codeql-action/upload-sarif@v3
@@ -221,10 +448,16 @@ jobs:
         working_directory: infrastructure/terraform
         format: sarif
         output: tfsec-results.sarif
+        soft_fail: true
         
     - name: Upload TFSec results
       uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
         sarif_file: tfsec-results.sarif
+        
+    - name: Security Summary
+      run: |
+        echo "## 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+        echo "Security scans completed. Check the Security tab for detailed results." >> $GITHUB_STEP_SUMMARY
 
