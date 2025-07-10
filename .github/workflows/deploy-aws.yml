@@ -129,6 +129,10 @@ jobs:
         if [ -z "$IMAGE_TAG" ]; then
           IMAGE_TAG="latest"
         fi
+        echo "DEBUG: AWS_ACCOUNT_ID=${{ secrets.AWS_ACCOUNT_ID }}"
+        echo "DEBUG: AWS_REGION=${{ env.AWS_REGION }}"
+        echo "DEBUG: ECR_REPOSITORY=${{ env.ECR_REPOSITORY }}"
+        echo "DEBUG: IMAGE_TAG=${{ env.IMAGE_TAG }}"
         IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
         LATEST_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest"
         echo "✅ Building image: $IMAGE_URI"
