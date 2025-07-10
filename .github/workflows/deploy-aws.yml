@@ -99,7 +99,7 @@ jobs:
     needs: [test, security-scan]
     if: github.ref == 'refs/heads/main'
     outputs:
-      image-uri: ${{ steps.build-image.outputs.image-uri }}
+      image_uri: ${{ steps.build-image.outputs.image_uri }}
     
     steps:
     - name: Checkout code
@@ -133,20 +133,20 @@ jobs:
         docker build -t $IMAGE_URI .
         docker tag $IMAGE_URI $LATEST_URI
         
-        echo "image-uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+        echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
         echo "✅ Image built and tagged successfully"
         
     - name: Scan Docker image
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: '${{ steps.build-image.outputs.image-uri }}'
+        image-ref: '${{ steps.build-image.outputs.image_uri }}'
         format: 'table'
         severity: 'HIGH,CRITICAL'
         exit-code: '0'
         
     - name: Push image to ECR
       run: |
-        docker push ${{ steps.build-image.outputs.image-uri }}
+        docker push ${{ steps.build-image.outputs.image_uri }}
         docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
 
   deploy-to-staging:
@@ -183,7 +183,7 @@ jobs:
     - name: Deploy to staging
       run: |
         # Verify image URI is available
-        IMAGE_URI="${{ needs.build-and-push.outputs.image-uri }}"
+        IMAGE_URI="${{ needs.build-and-push.outputs.image_uri }}"
         if [ -z "$IMAGE_URI" ]; then
           echo "❌ Error: Image URI is empty"
           echo "Available outputs: ${{ toJson(needs.build-and-push.outputs) }}"
@@ -299,7 +299,7 @@ jobs:
       run: |
         # Create temporary deployment file with correct image
         cp k8s/base/deployment.yaml deployment-temp.yaml
-        sed -i "s|IMAGE_TAG_PLACEHOLDER|${{ needs.build-and-push.outputs.image-uri }}|g" deployment-temp.yaml
+        sed -i "s|IMAGE_TAG_PLACEHOLDER|${{ needs.build-and-push.outputs.image_uri }}|g" deployment-temp.yaml
         
         # Apply Kubernetes manifests
         kubectl apply -f k8s/base/namespace.yaml || echo "Namespace already exists"
@@ -364,7 +364,7 @@ jobs:
       run: |
         echo "🎉 DataCompass 1.0 deployed successfully to production!"
         echo "📊 Deployment Details:" >> $GITHUB_STEP_SUMMARY
-        echo "- **Image**: ${{ needs.build-and-push.outputs.image-uri }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Image**: ${{ needs.build-and-push.outputs.image_uri }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Namespace**: ${{ env.NAMESPACE }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Cluster**: ${{ env.EKS_CLUSTER_NAME }}" >> $GITHUB_STEP_SUMMARY
         
