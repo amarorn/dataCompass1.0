@@ -12,6 +12,7 @@ import { clientRoutes } from './presentation/routes/clientRoutes';
 import { analyticsRoutes } from './presentation/routes/analyticsRoutes';
 import { whatsappRoutes } from './presentation/routes/whatsappRoutes';
 import { userRoutes } from './presentation/routes/userRoutes';
+import { messageHistoryRoutes } from './presentation/routes/messageHistoryRoutes';
 
 // Importar middlewares
 import { errorHandler } from './presentation/middlewares/errorHandler';
@@ -63,6 +64,7 @@ class App {
     this.app.use('/api/analytics', analyticsRoutes);
     this.app.use('/api/whatsapp', whatsappRoutes);
     this.app.use('/api/users', userRoutes);
+    this.app.use('/api/messages', messageHistoryRoutes);
   }
 
   private initializeErrorHandling(): void {
