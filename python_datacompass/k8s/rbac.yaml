@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: datacompass-python-sa
+  namespace: datacompass-python
+  labels:
+    app: datacompass-python
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: datacompass-python-role
+  namespace: datacompass-python
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: datacompass-python-rolebinding
+  namespace: datacompass-python
+subjects:
+- kind: ServiceAccount
+  name: datacompass-python-sa
+  namespace: datacompass-python
+roleRef:
+  kind: Role
+  name: datacompass-python-role
+  apiGroup: rbac.authorization.k8s.io

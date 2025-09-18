@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datacompass-python-app
+  namespace: datacompass-python
+  labels:
+    app: datacompass-python
+    version: python
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: datacompass-python
+  template:
+    metadata:
+      labels:
+        app: datacompass-python
+    spec:
+      containers:
+      - name: datacompass-python
+        image: datacompass-python:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: datacompass-python-secrets
+              key: MONGODB_URI
+        - name: WHATSAPP_ACCESS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: datacompass-python-secrets
+              key: WHATSAPP_ACCESS_TOKEN
+        - name: WHATSAPP_PHONE_NUMBER_ID
+          valueFrom:
+            secretKeyRef:
+              name: datacompass-python-secrets
+              key: WHATSAPP_PHONE_NUMBER_ID
+        - name: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: datacompass-python-secrets
+              key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: datacompass-python-secrets
+              key: JWT_SECRET_KEY
+        envFrom:
+        - configMapRef:
+            name: datacompass-python-config
+        volumeMounts:
+        - name: app-storage
+          mountPath: /app/models
+        - name: tmp-storage
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 10
+      volumes:
+      - name: app-storage
+        persistentVolumeClaim:
+          claimName: app-storage-pvc
+      - name: tmp-storage
+        emptyDir: {}
+      initContainers:
+      - name: wait-for-mongodb
+        image: busybox:1.35
+        command: ['sh', '-c', 'until nc -z mongodb-service 27017; do echo waiting for mongodb; sleep 2; done;']
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datacompass-python-service
+  namespace: datacompass-python
+  labels:
+    app: datacompass-python
+spec:
+  selector:
+    app: datacompass-python
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-storage-pvc
+  namespace: datacompass-python
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
