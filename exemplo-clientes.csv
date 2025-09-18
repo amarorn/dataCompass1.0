@@ -1,0 +1,9 @@
+nome,idade,email,ativo,cadastro,score_credito,cidade,estado,compras_mes
+João Silva,34,joao@email.com,true,2024-01-15,750,São Paulo,SP,3
+Maria Santos,28,maria@email.com,true,2024-02-20,820,Rio de Janeiro,RJ,5
+Pedro Costa,45,pedro@email.com,false,2023-12-10,680,Belo Horizonte,MG,1
+Ana Oliveira,31,ana@email.com,true,2024-03-05,790,Salvador,BA,4
+Carlos Lima,29,carlos@email.com,true,2024-01-28,710,Brasília,DF,2
+Lucia Ferreira,38,lucia@email.com,false,2023-11-22,650,Fortaleza,CE,0
+Roberto Alves,42,roberto@email.com,true,2024-02-14,800,Recife,PE,6
+Fernanda Rocha,26,fernanda@email.com,true,2024-03-12,760,Porto Alegre,RS,3

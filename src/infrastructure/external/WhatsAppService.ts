@@ -1,5 +1,8 @@
 import crypto from 'crypto';
 import axios from 'axios';
+import FormData from 'form-data';
+import fs from 'fs';
+import path from 'path';
 
 export interface WhatsAppMessage {
   id: string;
@@ -17,6 +20,12 @@ export interface WhatsAppMessage {
   audio?: {
     id: string;
     mime_type: string;
+  };
+  document?: {
+    id: string;
+    filename: string;
+    mime_type: string;
+    sha256: string;
   };
   location?: {
     latitude: number;
@@ -298,6 +307,170 @@ export class WhatsAppService {
     }
     
     return !!(this.accessToken && this.phoneNumberId);
+  }
+
+  /**
+   * Envia uma mensagem de texto (alias para sendTextMessage)
+   */
+  public async sendMessage(to: string, message: string): Promise<any> {
+    return this.sendTextMessage(to, message);
+  }
+
+  /**
+   * Envia um documento/arquivo via WhatsApp
+   */
+  public async sendDocument(to: string, filePath: string, caption?: string): Promise<boolean> {
+    if (!this.accessToken || !this.phoneNumberId) {
+      console.error('WhatsApp credentials not configured');
+      return false;
+    }
+
+    try {
+      // Verificar se o arquivo existe
+      if (!fs.existsSync(filePath)) {
+        console.error(`Arquivo não encontrado: ${filePath}`);
+        return false;
+      }
+
+      const fileName = path.basename(filePath);
+      const isImage = this.isImageFile(filePath);
+      
+      console.log(`📎 Enviando ${isImage ? 'imagem' : 'documento'}: ${fileName} para ${to}`);
+
+      // Primeiro, fazer upload do arquivo
+      const uploadResult = await this.uploadMedia(filePath);
+      if (!uploadResult.success || !uploadResult.mediaId) {
+        console.error('Falha no upload do arquivo:', uploadResult.error);
+        return false;
+      }
+
+      // Criar payload baseado no tipo de arquivo
+      let payload: any;
+      
+      if (isImage) {
+        // Para imagens PNG/JPEG usar type: 'image'
+        payload = {
+          messaging_product: 'whatsapp',
+          to: to.replace(/\D/g, ''),
+          type: 'image',
+          image: {
+            id: uploadResult.mediaId,
+            caption: caption || ''
+          }
+        };
+      } else {
+        // Para outros arquivos usar type: 'document'
+        payload = {
+          messaging_product: 'whatsapp',
+          to: to.replace(/\D/g, ''),
+          type: 'document',
+          document: {
+            id: uploadResult.mediaId,
+            caption: caption || '',
+            filename: fileName
+          }
+        };
+      }
+
+      const response = await axios.post(
+        `${this.baseUrl}/${this.phoneNumberId}/messages`,
+        payload,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      console.log(`✅ ${isImage ? 'Imagem' : 'Documento'} enviado com sucesso:`, response.data);
+      return true;
+
+    } catch (error: any) {
+      console.error('❌ Erro ao enviar arquivo:', error.response?.data || error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Faz upload de um arquivo para o WhatsApp
+   */
+  private async uploadMedia(filePath: string): Promise<{
+    success: boolean;
+    mediaId?: string;
+    error?: string;
+  }> {
+    try {
+      const formData = new FormData();
+      formData.append('file', fs.createReadStream(filePath));
+      formData.append('type', this.getMimeType(filePath));
+      formData.append('messaging_product', 'whatsapp');
+
+      const response = await axios.post(
+        `${this.baseUrl}/${this.phoneNumberId}/media`,
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            ...formData.getHeaders()
+          }
+        }
+      );
+
+      if (response.data && response.data.id) {
+        console.log(`✅ Upload concluído, Media ID: ${response.data.id}`);
+        return {
+          success: true,
+          mediaId: response.data.id
+        };
+      } else {
+        return {
+          success: false,
+          error: 'Resposta inválida do upload'
+        };
+      }
+
+    } catch (error: any) {
+      console.error('❌ Erro no upload:', error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || error.message
+      };
+    }
+  }
+
+  /**
+   * Verifica se o arquivo é uma imagem
+   */
+  private isImageFile(filePath: string): boolean {
+    const ext = path.extname(filePath).toLowerCase();
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif'];
+    return imageExtensions.includes(ext);
+  }
+
+  /**
+   * Determina o MIME type baseado na extensão do arquivo
+   */
+  private getMimeType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    
+    const mimeTypes: { [key: string]: string } = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.pdf': 'application/pdf',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.ppt': 'application/vnd.ms-powerpoint',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.txt': 'text/plain',
+      '.csv': 'text/csv'
+    };
+
+    return mimeTypes[ext] || 'application/octet-stream';
   }
 
   /**

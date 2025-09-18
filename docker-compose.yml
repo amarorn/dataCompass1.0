@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Aplicação Node.js
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: datacompass-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongo:27017/datacompass
+      - WHATSAPP_TOKEN=${WHATSAPP_TOKEN}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID}
+      - WHATSAPP_WEBHOOK_SECRET=${WHATSAPP_WEBHOOK_SECRET}
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
+    depends_on:
+      - mongo
+    networks:
+      - datacompass-network
+    restart: unless-stopped
+    volumes:
+      - ./temp:/app/temp # Para arquivos temporários CSV
+
+  # MongoDB
+  mongo:
+    image: mongo:7.0
+    container_name: datacompass-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=datacompass
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - datacompass-network
+    restart: unless-stopped
+
+  # MongoDB Express (Interface Web - Opcional)
+  mongo-express:
+    image: mongo-express:1.0.0
+    container_name: datacompass-mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongo:27017/
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=datacompass2025
+    depends_on:
+      - mongo
+    networks:
+      - datacompass-network
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+    driver: local
+
+networks:
+  datacompass-network:
+    driver: bridge

@@ -15,6 +15,12 @@ export interface WhatsAppMessage {
         id: string;
         mime_type: string;
     };
+    document?: {
+        id: string;
+        filename: string;
+        mime_type: string;
+        sha256: string;
+    };
     location?: {
         latitude: number;
         longitude: number;
@@ -101,6 +107,26 @@ export declare class WhatsAppService {
      * Verifica se as credenciais estão configuradas
      */
     isConfigured(): boolean;
+    /**
+     * Envia uma mensagem de texto (alias para sendTextMessage)
+     */
+    sendMessage(to: string, message: string): Promise<any>;
+    /**
+     * Envia um documento/arquivo via WhatsApp
+     */
+    sendDocument(to: string, filePath: string, caption?: string): Promise<boolean>;
+    /**
+     * Faz upload de um arquivo para o WhatsApp
+     */
+    private uploadMedia;
+    /**
+     * Verifica se o arquivo é uma imagem
+     */
+    private isImageFile;
+    /**
+     * Determina o MIME type baseado na extensão do arquivo
+     */
+    private getMimeType;
     /**
      * Obtém status da configuração
      */

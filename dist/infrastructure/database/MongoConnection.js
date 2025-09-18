@@ -18,7 +18,7 @@ class MongoConnection {
             return this.db;
         }
         try {
-            const mongoUrl = process.env.DATABASE_URL || 'mongodb://localhost:27017/datacompass';
+            const mongoUrl = process.env.MONGODB_URI || process.env.DATABASE_URL || 'mongodb://localhost:27017/datacompass';
             console.log('🔌 Connecting to MongoDB...');
             this.client = new mongodb_1.MongoClient(mongoUrl, {
                 maxPoolSize: 10,

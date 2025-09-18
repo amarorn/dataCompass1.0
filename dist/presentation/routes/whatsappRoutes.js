@@ -1,4 +1,40 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.whatsappRoutes = void 0;
 const express_1 = require("express");
@@ -9,10 +45,319 @@ const WhatsAppRegistrationService_1 = require("../../application/services/WhatsA
 const MongoConnection_1 = require("../../infrastructure/database/MongoConnection");
 const MongoUserRepository_1 = require("../../infrastructure/database/MongoUserRepository");
 const messageHistoryRoutes_1 = require("./messageHistoryRoutes");
+const MongoCSVRepository_1 = require("../../infrastructure/database/MongoCSVRepository");
+const MongoMessageRepository_1 = require("../../infrastructure/database/MongoMessageRepository");
+const MongoMLRepository_1 = require("../../infrastructure/database/MongoMLRepository");
+const MongoRawRepository_1 = require("../../infrastructure/database/MongoRawRepository");
+const ExploratoryAnalysisService_1 = require("../../application/services/ExploratoryAnalysisService");
+const ChartGeneratorService_1 = require("../../application/services/ChartGeneratorService");
+const axios_1 = __importDefault(require("axios"));
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
+const csv_parser_1 = __importDefault(require("csv-parser"));
 const router = (0, express_1.Router)();
 exports.whatsappRoutes = router;
 const whatsappService = new WhatsAppService_1.WhatsAppService();
 const messageProcessor = new MessageProcessorService_1.MessageProcessorService();
+const csvRepository = new MongoCSVRepository_1.MongoCSVRepository();
+const messageRepository = new MongoMessageRepository_1.MongoMessageRepository();
+const mlRepository = new MongoMLRepository_1.MongoMLRepository();
+const rawRepository = new MongoRawRepository_1.MongoRawRepository();
+const analysisService = new ExploratoryAnalysisService_1.ExploratoryAnalysisService();
+const chartService = new ChartGeneratorService_1.ChartGeneratorService();
+// Função para processar documentos CSV recebidos
+async function processCSVDocument(document, from, messageId) {
+    console.log('🔄 Starting CSV processing...', { documentId: document.id, filename: document.filename });
+    try {
+        // Verificar se o token está configurado
+        const token = process.env.WHATSAPP_TOKEN;
+        if (!token) {
+            throw new Error('WhatsApp token not configured');
+        }
+        console.log('📥 Downloading CSV file from WhatsApp...', { documentId: document.id });
+        // 1. Baixar o arquivo da API do WhatsApp
+        const fileUrl = `https://graph.facebook.com/v21.0/${document.id}`;
+        console.log('🌐 Requesting file URL:', fileUrl);
+        const response = await axios_1.default.get(fileUrl, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            timeout: 10000 // 10 segundos timeout
+        });
+        console.log('📋 File URL response:', {
+            status: response.status,
+            hasUrl: !!response.data.url,
+            dataKeys: Object.keys(response.data)
+        });
+        const downloadUrl = response.data.url;
+        if (!downloadUrl) {
+            throw new Error('No download URL received from WhatsApp API');
+        }
+        console.log('📁 File download URL obtained, starting download...');
+        // 2. Baixar o conteúdo do arquivo
+        const fileResponse = await axios_1.default.get(downloadUrl, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            responseType: 'stream'
+        });
+        // 3. Criar diretório temporário se não existir
+        const tempDir = path.join(process.cwd(), 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+        // 4. Salvar arquivo temporariamente
+        const tempFilePath = path.join(tempDir, `${messageId}_${document.filename}`);
+        const writer = fs.createWriteStream(tempFilePath);
+        fileResponse.data.pipe(writer);
+        await new Promise((resolve, reject) => {
+            writer.on('finish', () => resolve());
+            writer.on('error', reject);
+        });
+        console.log('💾 File saved temporarily:', tempFilePath);
+        // 5. Processar CSV
+        const csvData = [];
+        const columns = new Set();
+        await new Promise((resolve, reject) => {
+            fs.createReadStream(tempFilePath)
+                .pipe((0, csv_parser_1.default)())
+                .on('data', (row) => {
+                csvData.push(row);
+                Object.keys(row).forEach(col => columns.add(col));
+            })
+                .on('end', () => resolve())
+                .on('error', reject);
+        });
+        // 6. Gerar insights básicos
+        const insights = generateCSVInsights(csvData, Array.from(columns));
+        // 7. Armazenar dados processados no MongoDB
+        const processedCSV = {
+            id: messageId,
+            filename: document.filename,
+            from: from,
+            processedAt: new Date(),
+            data: csvData,
+            summary: {
+                rows: csvData.length,
+                columns: Array.from(columns),
+                insights: insights
+            }
+        };
+        await csvRepository.saveProcessedCSV(processedCSV);
+        // 7.5. Salvar dados brutos na coleção 'raw' vinculados ao messageId
+        try {
+            console.log('💾 Salvando dados brutos na coleção raw...');
+            const rawResult = await rawRepository.saveRawData(messageId, document.filename, from, csvData);
+            console.log('✅ Dados brutos salvos:', rawResult);
+        }
+        catch (rawError) {
+            console.error('❌ Erro ao salvar dados brutos (continuando):', rawError);
+        }
+        // 7.6. Realizar análise exploratória completa
+        try {
+            console.log('🔍 Realizando análise exploratória...');
+            const exploratoryAnalysis = await analysisService.performExploratoryAnalysis(messageId, document.filename, from, csvData);
+            // Salvar análise exploratória
+            await rawRepository.saveExploratoryAnalysis(exploratoryAnalysis);
+            console.log('✅ Análise exploratória concluída e salva');
+        }
+        catch (analysisError) {
+            console.error('❌ Erro na análise exploratória (continuando):', analysisError);
+        }
+        // 7.7. Processar dados para ML (mantendo compatibilidade)
+        try {
+            console.log('🤖 Processing CSV data for ML analysis...');
+            const mlResult = await mlRepository.processCSVForML(messageId, document.filename, from, csvData);
+            console.log('✅ ML processing completed:', mlResult);
+        }
+        catch (mlError) {
+            console.error('❌ ML processing failed (continuing anyway):', mlError);
+        }
+        // 8. Limpar arquivo temporário
+        fs.unlinkSync(tempFilePath);
+        console.log('✅ CSV processed successfully:', {
+            filename: document.filename,
+            rows: csvData.length,
+            columns: columns.size
+        });
+        // 9. Enviar confirmação inicial ao usuário
+        const initialMessage = `🔄 *Processamento Iniciado!*\n\n` +
+            `📄 Arquivo: ${document.filename}\n` +
+            `📈 Linhas: ${csvData.length}\n` +
+            `📋 Colunas: ${columns.size}\n\n` +
+            `⏳ Gerando gráficos e análises avançadas...\n` +
+            `📊 Em alguns instantes você receberá os gráficos!`;
+        if (whatsappService.isConfigured()) {
+            await whatsappService.sendTextMessage(from, initialMessage);
+        }
+        else {
+            console.log(`📤 [SIMULATION] CSV initial message: ${initialMessage}`);
+        }
+        // 10. Gerar e enviar gráficos automaticamente
+        console.log('📊 Iniciando geração de gráficos...');
+        try {
+            const chartResult = await chartService.generateAndSendCharts(messageId, document.filename, from);
+            if (chartResult.success) {
+                console.log(`✅ Gráficos enviados com sucesso: ${chartResult.charts.length} gráficos`);
+            }
+            else {
+                console.error(`❌ Falha ao enviar gráficos: ${chartResult.error}`);
+                // Enviar mensagem de fallback se os gráficos falharam
+                const fallbackMessage = `📊 *Análise Concluída!*\n\n` +
+                    `📄 Arquivo: ${document.filename}\n` +
+                    `📈 Linhas: ${csvData.length}\n` +
+                    `📋 Colunas: ${columns.size}\n\n` +
+                    `💡 *Insights:*\n${insights.join('\n')}\n\n` +
+                    `🔍 *Análises realizadas:*\n` +
+                    `• ✅ Dados brutos salvos (coleção raw)\n` +
+                    `• ✅ Análise exploratória completa\n` +
+                    `• ✅ Preparação para Machine Learning\n` +
+                    `• ✅ Estatísticas descritivas\n` +
+                    `• ✅ Detecção de qualidade dos dados\n\n` +
+                    `📊 ID da Mensagem: ${messageId}\n\n` +
+                    `⚠️ *Nota:* Os gráficos não puderam ser gerados automaticamente.\n` +
+                    `Use /raw para dados brutos ou /analysis para análise completa.`;
+                if (whatsappService.isConfigured()) {
+                    await whatsappService.sendTextMessage(from, fallbackMessage);
+                }
+                else {
+                    console.log(`📤 [SIMULATION] CSV fallback: ${fallbackMessage}`);
+                }
+            }
+        }
+        catch (chartError) {
+            console.error('❌ Erro na geração de gráficos:', chartError);
+            // Enviar confirmação básica se houver erro nos gráficos
+            const basicConfirmation = `📊 *CSV Processado!*\n\n` +
+                `📄 Arquivo: ${document.filename}\n` +
+                `📈 Linhas: ${csvData.length}\n` +
+                `📋 Colunas: ${columns.size}\n\n` +
+                `✅ Dados salvos e analisados com sucesso!\n` +
+                `📊 ID: ${messageId}\n\n` +
+                `💡 Use /raw ou /analysis para acessar os dados.`;
+            if (whatsappService.isConfigured()) {
+                await whatsappService.sendTextMessage(from, basicConfirmation);
+            }
+            else {
+                console.log(`📤 [SIMULATION] CSV basic confirmation: ${basicConfirmation}`);
+            }
+        }
+    }
+    catch (error) {
+        console.error('❌ Error processing CSV:', error);
+        const errorMessage = `❌ Erro ao processar CSV: ${document.filename}\n\n` +
+            `Por favor, verifique se o arquivo está no formato correto e tente novamente.`;
+        if (whatsappService.isConfigured()) {
+            await whatsappService.sendTextMessage(from, errorMessage);
+        }
+        else {
+            console.log(`📤 [SIMULATION] CSV error: ${errorMessage}`);
+        }
+    }
+}
+// Função para gerar insights básicos do CSV
+function generateCSVInsights(data, columns) {
+    const insights = [];
+    if (data.length === 0) {
+        insights.push('• Arquivo vazio');
+        return insights;
+    }
+    // Insight sobre quantidade de dados
+    if (data.length < 10) {
+        insights.push('• Dataset pequeno (ideal para testes)');
+    }
+    else if (data.length < 1000) {
+        insights.push('• Dataset médio (boa amostra para análise)');
+    }
+    else {
+        insights.push('• Dataset grande (análise robusta possível)');
+    }
+    // Insight sobre colunas numéricas
+    const numericColumns = columns.filter(col => {
+        const sampleValues = data.slice(0, 10).map(row => row[col]);
+        return sampleValues.some(val => !isNaN(parseFloat(val)) && isFinite(val));
+    });
+    if (numericColumns.length > 0) {
+        insights.push(`• ${numericColumns.length} coluna(s) numérica(s) detectada(s)`);
+    }
+    // Insight sobre completude dos dados
+    const completeness = columns.map(col => {
+        const filledValues = data.filter(row => row[col] && row[col].toString().trim() !== '').length;
+        return { column: col, percentage: (filledValues / data.length) * 100 };
+    });
+    const avgCompleteness = completeness.reduce((sum, item) => sum + item.percentage, 0) / completeness.length;
+    if (avgCompleteness > 90) {
+        insights.push('• Dados muito completos (>90% preenchidos)');
+    }
+    else if (avgCompleteness > 70) {
+        insights.push('• Dados moderadamente completos (70-90% preenchidos)');
+    }
+    else {
+        insights.push('• Dados com lacunas significativas (<70% preenchidos)');
+    }
+    return insights;
+}
+// Função para gerar análise detalhada de um CSV
+function generateDetailedAnalysis(data, columns) {
+    if (data.length === 0) {
+        return { error: 'No data to analyze' };
+    }
+    const analysis = {
+        overview: {
+            totalRows: data.length,
+            totalColumns: columns.length,
+            dataTypes: {}
+        },
+        columns: {},
+        statistics: {},
+        patterns: []
+    };
+    // Analisar cada coluna
+    columns.forEach(column => {
+        const values = data.map(row => row[column]).filter(val => val !== null && val !== undefined && val !== '');
+        const nonEmptyCount = values.length;
+        const completeness = (nonEmptyCount / data.length) * 100;
+        // Detectar tipo de dados
+        const numericValues = values.filter(val => !isNaN(parseFloat(val)) && isFinite(val)).map(val => parseFloat(val));
+        const isNumeric = numericValues.length > values.length * 0.8; // 80% dos valores são numéricos
+        analysis.columns[column] = {
+            completeness: Math.round(completeness * 100) / 100,
+            uniqueValues: new Set(values).size,
+            dataType: isNumeric ? 'numeric' : 'text',
+            sampleValues: values.slice(0, 5)
+        };
+        analysis.overview.dataTypes[column] = isNumeric ? 'numeric' : 'text';
+        // Estatísticas para colunas numéricas
+        if (isNumeric && numericValues.length > 0) {
+            const sorted = numericValues.sort((a, b) => a - b);
+            const sum = numericValues.reduce((acc, val) => acc + val, 0);
+            const mean = sum / numericValues.length;
+            analysis.statistics[column] = {
+                count: numericValues.length,
+                min: sorted[0],
+                max: sorted[sorted.length - 1],
+                mean: Math.round(mean * 100) / 100,
+                median: sorted.length % 2 === 0
+                    ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+                    : sorted[Math.floor(sorted.length / 2)]
+            };
+        }
+    });
+    // Detectar padrões
+    const numericColumns = columns.filter(col => analysis.overview.dataTypes[col] === 'numeric');
+    if (numericColumns.length > 1) {
+        analysis.patterns.push(`Dataset com ${numericColumns.length} colunas numéricas - ideal para análise estatística`);
+    }
+    const highCompletenessColumns = columns.filter(col => analysis.columns[col].completeness > 95);
+    if (highCompletenessColumns.length > columns.length * 0.8) {
+        analysis.patterns.push('Dataset com alta qualidade de dados (>95% completude)');
+    }
+    const uniqueIdentifiers = columns.filter(col => analysis.columns[col].uniqueValues === data.length);
+    if (uniqueIdentifiers.length > 0) {
+        analysis.patterns.push(`Possível(is) identificador(es) único(s): ${uniqueIdentifiers.join(', ')}`);
+    }
+    return analysis;
+}
 // Inicializar serviços de registro
 let registrationService = null;
 // Inicializar MongoDB e serviços
@@ -84,18 +429,97 @@ router.post('/webhook', (0, errorHandler_1.asyncHandler)(async (req, res) => {
         // Processar mensagens recebidas
         const messages = whatsappService.processWebhookPayload(webhookPayload);
         console.log(`📥 Processing ${messages.length} messages`);
+        // Debug: Log detalhado de cada mensagem
+        messages.forEach((msg, index) => {
+            console.log(`📋 Message ${index + 1}:`, {
+                id: msg.id,
+                type: msg.type,
+                from: msg.from,
+                hasText: !!msg.text,
+                hasDocument: !!msg.document,
+                hasImage: !!msg.image,
+                hasAudio: !!msg.audio
+            });
+        });
         for (const message of messages) {
             try {
                 console.log(`Processing message from ${message.from}:`, message.text?.body);
-                // Registrar mensagem recebida no histórico
+                // Registrar mensagem recebida no histórico MongoDB
                 if (message.text?.body) {
-                    (0, messageHistoryRoutes_1.addToHistory)({
-                        id: message.id,
-                        from: message.from,
-                        message: message.text.body,
-                        timestamp: new Date().toISOString(),
-                        type: 'received'
+                    try {
+                        await messageRepository.addToHistory({
+                            id: message.id,
+                            from: message.from,
+                            message: message.text.body,
+                            timestamp: new Date(),
+                            type: 'received'
+                        });
+                    }
+                    catch (error) {
+                        console.error('❌ Error saving message to MongoDB:', error);
+                        // Fallback para memória se MongoDB falhar
+                        (0, messageHistoryRoutes_1.addToHistory)({
+                            id: message.id,
+                            from: message.from,
+                            message: message.text.body,
+                            timestamp: new Date().toISOString(),
+                            type: 'received'
+                        });
+                    }
+                }
+                // Processar documentos CSV recebidos
+                if (message.document) {
+                    console.log('📄 Document received:', {
+                        id: message.document.id,
+                        filename: message.document.filename,
+                        mime_type: message.document.mime_type,
+                        sha256: message.document.sha256
                     });
+                    // Sempre registrar documento no histórico MongoDB primeiro
+                    try {
+                        await messageRepository.addToHistory({
+                            id: message.id,
+                            from: message.from,
+                            message: `📄 Documento recebido: ${message.document.filename} (${message.document.mime_type})`,
+                            timestamp: new Date(),
+                            type: 'received'
+                        });
+                    }
+                    catch (error) {
+                        console.error('❌ Error saving document message to MongoDB:', error);
+                        // Fallback para memória
+                        (0, messageHistoryRoutes_1.addToHistory)({
+                            id: message.id,
+                            from: message.from,
+                            message: `📄 Documento recebido: ${message.document.filename} (${message.document.mime_type})`,
+                            timestamp: new Date().toISOString(),
+                            type: 'received'
+                        });
+                    }
+                    // Verificar se é um arquivo CSV
+                    if (message.document.mime_type === 'text/csv' ||
+                        message.document.mime_type === 'application/csv' ||
+                        message.document.filename?.toLowerCase().endsWith('.csv')) {
+                        console.log('📊 CSV file detected, processing...');
+                        try {
+                            await processCSVDocument(message.document, message.from, message.id);
+                            console.log('✅ CSV processing completed successfully');
+                        }
+                        catch (error) {
+                            console.error('❌ CSV processing failed:', error);
+                            // Enviar mensagem de erro ao usuário
+                            const errorMsg = `❌ Erro ao processar CSV: ${message.document.filename}\n\nDetalhes: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+                            if (whatsappService.isConfigured()) {
+                                await whatsappService.sendTextMessage(message.from, errorMsg);
+                            }
+                            else {
+                                console.log(`📤 [SIMULATION] CSV error: ${errorMsg}`);
+                            }
+                        }
+                    }
+                    else {
+                        console.log('📎 Non-CSV document received, ignoring');
+                    }
                 }
                 // 1. Primeiro verificar se é um comando de registro
                 let registrationHandled = false;
@@ -342,6 +766,493 @@ router.post('/test', (0, errorHandler_1.asyncHandler)(async (req, res) => {
             success: false,
             error: {
                 message: 'Failed to process test message',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// GET /api/whatsapp/csv - Listar arquivos CSV processados
+router.get('/csv', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { from } = req.query;
+    const csvFiles = await csvRepository.getAllProcessedCSVs(from);
+    const stats = await csvRepository.getCSVStats();
+    res.json({
+        success: true,
+        message: 'Arquivos CSV processados',
+        data: csvFiles.map(csv => ({
+            id: csv.id,
+            filename: csv.filename,
+            from: csv.from,
+            processedAt: csv.processedAt,
+            summary: csv.summary
+        })),
+        meta: {
+            total: stats.totalCSVs,
+            totalRows: stats.totalRows,
+            totalUsers: stats.totalUsers,
+            lastProcessed: stats.lastProcessed
+        }
+    });
+}));
+// GET /api/whatsapp/csv/:id - Obter dados de um CSV específico
+router.get('/csv/:id', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { id } = req.params;
+    const { limit = 100, offset = 0 } = req.query;
+    const csvFile = await csvRepository.getProcessedCSVById(id);
+    if (!csvFile) {
+        return res.status(404).json({
+            success: false,
+            error: {
+                message: 'CSV file not found',
+                statusCode: 404
+            }
+        });
+    }
+    const startIndex = parseInt(offset);
+    const limitNum = parseInt(limit);
+    const paginatedData = csvFile.data.slice(startIndex, startIndex + limitNum);
+    res.json({
+        success: true,
+        message: 'Dados do CSV',
+        data: {
+            id: csvFile.id,
+            filename: csvFile.filename,
+            from: csvFile.from,
+            processedAt: csvFile.processedAt,
+            summary: csvFile.summary,
+            rows: paginatedData
+        },
+        meta: {
+            totalRows: csvFile.data.length,
+            showing: paginatedData.length,
+            offset: startIndex,
+            limit: limitNum
+        }
+    });
+}));
+// GET /api/whatsapp/csv/:id/analysis - Análise detalhada de um CSV
+router.get('/csv/:id/analysis', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { id } = req.params;
+    const csvFile = await csvRepository.getProcessedCSVById(id);
+    if (!csvFile) {
+        return res.status(404).json({
+            success: false,
+            error: {
+                message: 'CSV file not found',
+                statusCode: 404
+            }
+        });
+    }
+    // Gerar análise detalhada se não existir
+    let analysis = csvFile.analysis;
+    if (!analysis) {
+        analysis = generateDetailedAnalysis(csvFile.data, csvFile.summary.columns);
+        await csvRepository.updateCSVAnalysis(id, analysis);
+    }
+    res.json({
+        success: true,
+        message: 'Análise detalhada do CSV',
+        data: {
+            filename: csvFile.filename,
+            processedAt: csvFile.processedAt,
+            summary: csvFile.summary,
+            analysis: analysis
+        }
+    });
+}));
+// GET /api/whatsapp/ml/datasets - Listar todos os datasets para ML
+router.get('/ml/datasets', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    try {
+        const datasets = await mlRepository.getAllDatasets();
+        res.json({
+            success: true,
+            message: 'Datasets disponíveis para ML',
+            data: datasets,
+            meta: {
+                total: datasets.length,
+                totalRecords: datasets.reduce((sum, ds) => sum + ds.totalRecords, 0),
+                totalFeatures: datasets.reduce((sum, ds) => sum + ds.features.total, 0)
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch ML datasets',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// GET /api/whatsapp/ml/dataset/:csvId - Obter dados de ML de um CSV específico
+router.get('/ml/dataset/:csvId', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { csvId } = req.params;
+    const { limit = 100, offset = 0, features_only = false } = req.query;
+    try {
+        const [summary, mlData] = await Promise.all([
+            mlRepository.getDatasetSummary(csvId),
+            mlRepository.getMLDataByCSV(csvId)
+        ]);
+        if (!summary) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    message: 'Dataset not found',
+                    statusCode: 404
+                }
+            });
+        }
+        const startIndex = parseInt(offset);
+        const limitNum = parseInt(limit);
+        const paginatedData = mlData.slice(startIndex, startIndex + limitNum);
+        // Se features_only = true, retornar apenas os dados normalizados
+        const responseData = features_only === 'true'
+            ? paginatedData.map(record => ({
+                rowIndex: record.rowIndex,
+                features: record.normalizedData,
+                dataTypes: record.dataTypes,
+                quality: record.metadata.quality
+            }))
+            : paginatedData;
+        res.json({
+            success: true,
+            message: 'Dados do dataset para ML',
+            data: {
+                summary,
+                records: responseData
+            },
+            meta: {
+                totalRecords: mlData.length,
+                showing: paginatedData.length,
+                offset: startIndex,
+                limit: limitNum,
+                featuresOnly: features_only === 'true'
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch ML dataset',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// GET /api/whatsapp/ml/dataset/:csvId/summary - Resumo estatístico do dataset
+router.get('/ml/dataset/:csvId/summary', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { csvId } = req.params;
+    try {
+        const summary = await mlRepository.getDatasetSummary(csvId);
+        if (!summary) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    message: 'Dataset not found',
+                    statusCode: 404
+                }
+            });
+        }
+        res.json({
+            success: true,
+            message: 'Resumo estatístico do dataset',
+            data: summary
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch dataset summary',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// GET /api/whatsapp/ml/dataset/:csvId/features - Informações sobre features
+router.get('/ml/dataset/:csvId/features', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { csvId } = req.params;
+    try {
+        const summary = await mlRepository.getDatasetSummary(csvId);
+        if (!summary) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    message: 'Dataset not found',
+                    statusCode: 404
+                }
+            });
+        }
+        // Obter uma amostra dos dados para análise de features
+        const sampleData = await mlRepository.getMLDataByCSV(csvId);
+        const featureInfo = sampleData.length > 0 ? {
+            dataTypes: sampleData[0].dataTypes,
+            features: sampleData[0].features,
+            sampleValues: Object.keys(sampleData[0].dataTypes).reduce((acc, feature) => {
+                acc[feature] = sampleData
+                    .slice(0, 5)
+                    .map(record => record.normalizedData[feature])
+                    .filter(val => val != null);
+                return acc;
+            }, {})
+        } : null;
+        res.json({
+            success: true,
+            message: 'Informações sobre features do dataset',
+            data: {
+                summary: {
+                    filename: summary.filename,
+                    totalRecords: summary.totalRecords,
+                    features: summary.features,
+                    dataQuality: summary.dataQuality
+                },
+                featureDetails: featureInfo,
+                statistics: summary.statistics
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch feature information',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// === NOVAS ROTAS PARA DADOS BRUTOS E ANÁLISE EXPLORATÓRIA ===
+// GET /api/whatsapp/raw - Listar todas as mensagens com dados brutos
+router.get('/raw', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    try {
+        const messages = await rawRepository.getAllRawDataMessages();
+        res.json({
+            success: true,
+            message: 'Mensagens com dados brutos',
+            data: messages,
+            meta: {
+                total: messages.length,
+                totalRecords: messages.reduce((sum, msg) => sum + msg.recordCount, 0)
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch raw data messages',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// GET /api/whatsapp/raw/:messageId - Obter dados brutos por ID da mensagem
+router.get('/raw/:messageId', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { messageId } = req.params;
+    const { limit = 100, offset = 0 } = req.query;
+    try {
+        const rawData = await rawRepository.getRawDataByMessageId(messageId);
+        if (rawData.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    message: 'Raw data not found for this message ID',
+                    statusCode: 404
+                }
+            });
+        }
+        const startIndex = parseInt(offset);
+        const limitNum = parseInt(limit);
+        const paginatedData = rawData.slice(startIndex, startIndex + limitNum);
+        res.json({
+            success: true,
+            message: 'Dados brutos da mensagem',
+            data: {
+                messageId,
+                filename: rawData[0].filename,
+                from: rawData[0].from,
+                processedAt: rawData[0].processedAt,
+                records: paginatedData
+            },
+            meta: {
+                totalRecords: rawData.length,
+                showing: paginatedData.length,
+                offset: startIndex,
+                limit: limitNum
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch raw data',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// GET /api/whatsapp/analysis - Listar todas as análises exploratórias
+router.get('/analysis', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    try {
+        const analyses = await rawRepository.getAllExploratoryAnalyses();
+        res.json({
+            success: true,
+            message: 'Análises exploratórias disponíveis',
+            data: analyses,
+            meta: {
+                total: analyses.length,
+                totalRecords: analyses.reduce((sum, analysis) => sum + analysis.totalRecords, 0),
+                avgQuality: analyses.length > 0
+                    ? Math.round(analyses.reduce((sum, analysis) => sum + analysis.overallQuality, 0) / analyses.length * 100) / 100
+                    : 0
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch exploratory analyses',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// GET /api/whatsapp/analysis/:messageId - Obter análise exploratória completa
+router.get('/analysis/:messageId', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { messageId } = req.params;
+    try {
+        const analysis = await rawRepository.getExploratoryAnalysisByMessageId(messageId);
+        if (!analysis) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    message: 'Exploratory analysis not found for this message ID',
+                    statusCode: 404
+                }
+            });
+        }
+        res.json({
+            success: true,
+            message: 'Análise exploratória completa',
+            data: analysis
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch exploratory analysis',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// GET /api/whatsapp/analysis/:messageId/summary - Resumo da análise exploratória
+router.get('/analysis/:messageId/summary', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { messageId } = req.params;
+    try {
+        const analysis = await rawRepository.getExploratoryAnalysisByMessageId(messageId);
+        if (!analysis) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    message: 'Exploratory analysis not found for this message ID',
+                    statusCode: 404
+                }
+            });
+        }
+        // Retornar apenas resumo essencial
+        const summary = {
+            messageId: analysis.messageId,
+            filename: analysis.filename,
+            from: analysis.from,
+            totalRecords: analysis.totalRecords,
+            analysisDate: analysis.analysisDate,
+            dataStructure: analysis.dataStructure,
+            dataQuality: analysis.dataQuality,
+            keyFindings: analysis.insights.keyFindings,
+            recommendations: analysis.insights.recommendations,
+            suggestedVisualizations: analysis.suggestedVisualizations.filter(viz => viz.priority === 'high')
+        };
+        res.json({
+            success: true,
+            message: 'Resumo da análise exploratória',
+            data: summary
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch analysis summary',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// GET /api/whatsapp/raw/stats - Estatísticas gerais dos dados brutos
+router.get('/raw/stats', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    try {
+        const stats = await rawRepository.getRawDataStats();
+        res.json({
+            success: true,
+            message: 'Estatísticas dos dados brutos',
+            data: stats
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to fetch raw data stats',
+                statusCode: 500,
+                details: error.message
+            }
+        });
+    }
+}));
+// DELETE /api/whatsapp/raw/:messageId - Deletar dados brutos por ID da mensagem
+router.delete('/raw/:messageId', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { messageId } = req.params;
+    try {
+        const deletedCount = await rawRepository.deleteRawDataByMessageId(messageId);
+        if (deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    message: 'No raw data found for this message ID',
+                    statusCode: 404
+                }
+            });
+        }
+        res.json({
+            success: true,
+            message: 'Dados brutos deletados com sucesso',
+            data: {
+                messageId,
+                deletedRecords: deletedCount
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Failed to delete raw data',
                 statusCode: 500,
                 details: error.message
             }

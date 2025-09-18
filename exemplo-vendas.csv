@@ -1,0 +1,11 @@
+data,produto,vendedor,quantidade,valor_unitario,valor_total,cliente
+2025-01-15,Notebook Dell,João Silva,2,2500.00,5000.00,Empresa ABC
+2025-01-16,Mouse Logitech,Maria Santos,10,45.90,459.00,Loja XYZ
+2025-01-17,Teclado Mecânico,João Silva,5,180.00,900.00,Escritório 123
+2025-01-18,Monitor 24",Ana Costa,3,890.00,2670.00,Startup Tech
+2025-01-19,Webcam HD,Maria Santos,8,120.50,964.00,Empresa ABC
+2025-01-20,Headset Gamer,Pedro Lima,4,299.99,1199.96,Gamer Store
+2025-01-21,SSD 1TB,Ana Costa,6,450.00,2700.00,TechCorp
+2025-01-22,Placa de Vídeo,João Silva,1,1800.00,1800.00,PC Builder
+2025-01-23,Processador Intel,Maria Santos,2,1200.00,2400.00,Hardware Plus
+2025-01-24,Memória RAM 16GB,Pedro Lima,12,320.00,3840.00,Sistema Solutions

@@ -1,0 +1,21 @@
+venda_id,cliente_id,produto_id,data_venda,quantidade,valor_unitario,valor_total,desconto_aplicado,vendedor,forma_pagamento,status_pagamento
+VEN_001942,CLI_0196,PROD_0498,2023-09-14,22,287.0,6314.06,0.15,Thomas Andrade,À vista,Pago
+VEN_035011,CLI_0235,PROD_0292,2023-09-14,2,265.83,531.66,0.0,Dra. Ana Luiza Moura,Boleto,Pago
+VEN_012100,CLI_0283,PROD_0018,2023-09-14,2,411.79,823.58,0.0,Sra. Maria Liz da Paz,Cartão,Pago
+VEN_027418,CLI_0278,PROD_0395,2023-09-14,11,295.95,3255.45,0.0,Pedro Henrique Campos,Cartão,Pago
+VEN_018575,CLI_0240,PROD_0207,2023-09-14,7,175.11,1225.79,0.1,Isabelly Lima,Transferência,Pago
+VEN_041203,CLI_0236,PROD_0425,2023-09-14,28,103.53,2898.84,0.0,Sophia Mendes,Boleto,Pago
+VEN_025720,CLI_0966,PROD_0474,2023-09-14,21,102.89,2160.65,0.1,Danilo Farias,À vista,Pago
+VEN_042912,CLI_0124,PROD_0069,2023-09-14,10,335.59,3355.88,0.05,Maria Helena Albuquerque,À vista,Pago
+VEN_041775,CLI_0933,PROD_0415,2023-09-14,7,224.27,1569.87,0.05,Sr. Bento Brito,Boleto,Pago
+VEN_034902,CLI_0593,PROD_0258,2023-09-14,19,129.07,2452.33,0.0,Ryan Moreira,À vista,Pago
+VEN_010234,CLI_0567,PROD_0461,2023-09-14,20,8.63,172.62,0.1,Dra. Lunna da Conceição,À vista,Pago
+VEN_008716,CLI_0106,PROD_0353,2023-09-14,20,206.6,4131.93,0.05,Alexandre Fernandes,Transferência,Pago
+VEN_044980,CLI_0046,PROD_0227,2023-09-14,5,57.79,288.95,0.0,Srta. Ana Beatriz da Cruz,Transferência,Pago
+VEN_003573,CLI_0618,PROD_0496,2023-09-14,21,405.69,8519.49,0.0,Vitória Viana,Cartão,Pago
+VEN_029411,CLI_0248,PROD_0183,2023-09-14,11,47.7,524.69,0.05,Ian Brito,Transferência,Pago
+VEN_024827,CLI_0315,PROD_0268,2023-09-14,14,497.34,6962.76,0.0,Beatriz Caldeira,Cartão,Pago
+VEN_029144,CLI_0319,PROD_0264,2023-09-14,28,220.14,6164.02,0.05,Maya Cavalcanti,À vista,Pendente
+VEN_007159,CLI_0822,PROD_0227,2023-09-14,1,52.01,52.01,0.1,Lara Correia,Cartão,Pago
+VEN_026802,CLI_0702,PROD_0236,2023-09-14,18,416.91,7504.34,0.05,Caio Silva,À vista,Pago
+VEN_020240,CLI_0695,PROD_0452,2023-09-14,10,353.15,3531.53,0.05,Yasmin Sá,Cartão,Pago

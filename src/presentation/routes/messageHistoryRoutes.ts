@@ -1,7 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middlewares/errorHandler';
+import { MongoMessageRepository } from '../../infrastructure/database/MongoMessageRepository';
 
 const router = Router();
+const messageRepository = new MongoMessageRepository();
 
 // Sistema temporário de armazenamento em memória para mensagens
 interface MessageHistory {
@@ -34,41 +36,124 @@ export function addToHistory(message: MessageHistory) {
 router.get('/history', asyncHandler(async (req: Request, res: Response) => {
   const { limit = 10, type } = req.query;
   
-  let filteredMessages = messageHistory;
-  
-  // Filtrar por tipo se especificado
-  if (type && (type === 'sent' || type === 'received')) {
-    filteredMessages = messageHistory.filter(msg => msg.type === type);
-  }
-  
-  // Aplicar limite
-  const limitedMessages = filteredMessages.slice(0, Number(limit));
-  
-  res.json({
-    success: true,
-    message: 'Histórico de mensagens',
-    data: limitedMessages,
-    meta: {
-      total: filteredMessages.length,
-      showing: limitedMessages.length,
-      filter: type || 'all'
+  try {
+    // Tentar buscar do MongoDB primeiro
+    let mongoMessages = await messageRepository.getHistory();
+    
+    // Filtrar por tipo se especificado
+    if (type && (type === 'sent' || type === 'received')) {
+      mongoMessages = mongoMessages.filter(msg => msg.type === type);
     }
-  });
+    
+    // Aplicar limite
+    const limitedMessages = mongoMessages.slice(0, Number(limit));
+    
+    if (mongoMessages.length > 0) {
+      res.json({
+        success: true,
+        message: 'Histórico de mensagens (MongoDB)',
+        data: limitedMessages,
+        meta: {
+          total: mongoMessages.length,
+          showing: limitedMessages.length,
+          filter: type || 'all',
+          source: 'mongodb'
+        }
+      });
+    } else {
+      // Fallback para memória se MongoDB estiver vazio
+      let filteredMessages = messageHistory;
+      
+      if (type && (type === 'sent' || type === 'received')) {
+        filteredMessages = messageHistory.filter(msg => msg.type === type);
+      }
+      
+      const limitedMemoryMessages = filteredMessages.slice(0, Number(limit));
+      
+      res.json({
+        success: true,
+        message: 'Histórico de mensagens (memória)',
+        data: limitedMemoryMessages,
+        meta: {
+          total: filteredMessages.length,
+          showing: limitedMemoryMessages.length,
+          filter: type || 'all',
+          source: 'memory'
+        }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error fetching from MongoDB, using memory:', error);
+    // Fallback para memória em caso de erro
+    let filteredMessages = messageHistory;
+    
+    if (type && (type === 'sent' || type === 'received')) {
+      filteredMessages = messageHistory.filter(msg => msg.type === type);
+    }
+    
+    const limitedMessages = filteredMessages.slice(0, Number(limit));
+    
+    res.json({
+      success: true,
+      message: 'Histórico de mensagens (fallback)',
+      data: limitedMessages,
+      meta: {
+        total: filteredMessages.length,
+        showing: limitedMessages.length,
+        filter: type || 'all',
+        source: 'memory_fallback'
+      }
+    });
+  }
 }));
 
 // GET /api/messages/received - Ver apenas mensagens recebidas
 router.get('/received', asyncHandler(async (req: Request, res: Response) => {
-  const receivedMessages = messageHistory.filter(msg => msg.type === 'received');
-  
-  res.json({
-    success: true,
-    message: 'Mensagens recebidas dos usuários',
-    data: receivedMessages,
-    meta: {
-      total: receivedMessages.length,
-      lastReceived: receivedMessages[0]?.timestamp || null
+  try {
+    // Tentar buscar do MongoDB primeiro
+    const mongoMessages = await messageRepository.getReceivedMessages();
+    
+    if (mongoMessages.length > 0) {
+      res.json({
+        success: true,
+        message: 'Mensagens recebidas dos usuários (MongoDB)',
+        data: mongoMessages,
+        meta: {
+          total: mongoMessages.length,
+          lastReceived: mongoMessages.length > 0 ? mongoMessages[0].timestamp : null,
+          source: 'mongodb'
+        }
+      });
+    } else {
+      // Fallback para memória
+      const receivedMessages = messageHistory.filter(msg => msg.type === 'received');
+      
+      res.json({
+        success: true,
+        message: 'Mensagens recebidas dos usuários (memória)',
+        data: receivedMessages,
+        meta: {
+          total: receivedMessages.length,
+          lastReceived: receivedMessages[0]?.timestamp || null,
+          source: 'memory'
+        }
+      });
     }
-  });
+  } catch (error) {
+    console.error('❌ Error fetching received messages from MongoDB:', error);
+    // Fallback para memória
+    const receivedMessages = messageHistory.filter(msg => msg.type === 'received');
+    res.json({
+      success: true,
+      message: 'Mensagens recebidas dos usuários (fallback)',
+      data: receivedMessages,
+      meta: {
+        total: receivedMessages.length,
+        lastReceived: receivedMessages[0]?.timestamp || null,
+        source: 'memory_fallback'
+      }
+    });
+  }
 }));
 
 // GET /api/messages/sent - Ver apenas mensagens enviadas
