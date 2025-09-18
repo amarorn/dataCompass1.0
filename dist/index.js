@@ -15,6 +15,7 @@ const clientRoutes_1 = require("./presentation/routes/clientRoutes");
 const analyticsRoutes_1 = require("./presentation/routes/analyticsRoutes");
 const whatsappRoutes_1 = require("./presentation/routes/whatsappRoutes");
 const userRoutes_1 = require("./presentation/routes/userRoutes");
+const messageHistoryRoutes_1 = require("./presentation/routes/messageHistoryRoutes");
 // Importar middlewares
 const errorHandler_1 = require("./presentation/middlewares/errorHandler");
 const notFoundHandler_1 = require("./presentation/middlewares/notFoundHandler");
@@ -55,6 +56,7 @@ class App {
         this.app.use('/api/analytics', analyticsRoutes_1.analyticsRoutes);
         this.app.use('/api/whatsapp', whatsappRoutes_1.whatsappRoutes);
         this.app.use('/api/users', userRoutes_1.userRoutes);
+        this.app.use('/api/messages', messageHistoryRoutes_1.messageHistoryRoutes);
     }
     initializeErrorHandling() {
         this.app.use(notFoundHandler_1.notFoundHandler);
