@@ -1,0 +1,52 @@
+# Core dependencies
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-dotenv==1.0.1
+
+# WhatsApp integration
+pywa==2.1.0
+pywa-async==2.1.0
+
+# Database
+pymongo==4.10.1
+motor==3.6.0
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.12
+cryptography==43.0.3
+
+# Data processing & Analytics
+pandas==2.2.3
+numpy==2.1.3
+scikit-learn==1.5.2
+matplotlib==3.9.2
+seaborn==0.13.2
+plotly==5.24.1
+
+# CSV & File handling
+python-csv==0.0.13
+aiofiles==24.1.0
+openpyxl==3.1.5
+
+# HTTP client
+httpx==0.27.2
+aiohttp==3.10.10
+
+# Validation
+pydantic==2.9.2
+pydantic-settings==2.6.1
+email-validator==2.2.0
+
+# Utilities
+python-dateutil==2.9.0
+pytz==2024.2
+uuid6==2024.7.10
+
+# Development tools
+pytest==8.3.3
+pytest-asyncio==0.24.0
+black==24.10.0
+flake8==7.1.1
+mypy==1.13.0
