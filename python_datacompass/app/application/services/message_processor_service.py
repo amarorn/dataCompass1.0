@@ -3,7 +3,7 @@ Message processor service - processes WhatsApp messages and extracts insights.
 """
 
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.core.logging import LoggerMixin
 from app.domain.entities.interaction import Interaction, InteractionType, SentimentType
@@ -14,10 +14,10 @@ class ProcessedMessage:
     
     def __init__(
         self,
-        original_message: Dict[str, any],
+        original_message: Dict[str, Any],
         interaction_type: InteractionType,
         sentiment: SentimentType,
-        extracted_data: Dict[str, any],
+        extracted_data: Dict[str, Any],
         should_respond: bool,
         suggested_response: Optional[str] = None
     ):
@@ -154,7 +154,7 @@ class MessageProcessorService(LoggerMixin):
             )
         ]
     
-    def process_message(self, message: Dict[str, any]) -> ProcessedMessage:
+    def process_message(self, message: Dict[str, Any]) -> ProcessedMessage:
         """Process a WhatsApp message."""
         if message.get("type") != "text" or not message.get("text", {}).get("body"):
             return ProcessedMessage(
@@ -224,7 +224,7 @@ class MessageProcessorService(LoggerMixin):
         else:
             return SentimentType.NEUTRAL
     
-    def _extract_data(self, text: str, interaction_type: InteractionType) -> Dict[str, any]:
+    def _extract_data(self, text: str, interaction_type: InteractionType) -> Dict[str, Any]:
         """Extract structured data from text."""
         data = {}
         
@@ -279,7 +279,7 @@ class MessageProcessorService(LoggerMixin):
         
         return None
     
-    def _extract_entities(self, text: str) -> Dict[str, any]:
+    def _extract_entities(self, text: str) -> Dict[str, Any]:
         """Extract named entities from text."""
         entities = {}
         
@@ -341,7 +341,7 @@ class MessageProcessorService(LoggerMixin):
         self,
         interaction_type: InteractionType,
         sentiment: SentimentType,
-        extracted_data: Dict[str, any]
+        extracted_data: Dict[str, Any]
     ) -> str:
         """Generate automatic response based on context."""
         if interaction_type == InteractionType.PURCHASE:
@@ -368,6 +368,6 @@ class MessageProcessorService(LoggerMixin):
         else:
             return "👋 Olá! Recebemos sua mensagem e nossa equipe irá analisá-la em breve."
     
-    def process_messages(self, messages: List[Dict[str, any]]) -> List[ProcessedMessage]:
+    def process_messages(self, messages: List[Dict[str, Any]]) -> List[ProcessedMessage]:
         """Process multiple messages."""
         return [self.process_message(message) for message in messages]

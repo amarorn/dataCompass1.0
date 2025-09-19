@@ -2,7 +2,7 @@
 WhatsApp API routes.
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -63,7 +63,7 @@ class SendTemplateRequest(BaseModel):
     to: str
     template_name: str
     language_code: str = "pt_BR"
-    components: Optional[List[Dict[str, any]]] = None
+    components: Optional[List[Dict[str, Any]]] = None
 
 
 class TestMessageRequest(BaseModel):
@@ -279,7 +279,7 @@ async def process_csv_file(
     message_id: str,
     filename: str,
     from_number: str,
-    csv_data: List[Dict[str, any]]
+    csv_data: List[Dict[str, Any]]
 ):
     """Process CSV file and generate analysis."""
     try:

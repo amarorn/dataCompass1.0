@@ -5,7 +5,7 @@ Chart generator service - generates data visualizations.
 import asyncio
 import os
 import tempfile
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -54,7 +54,7 @@ class ChartGeneratorService(LoggerMixin):
         message_id: str,
         filename: str,
         from_number: str,
-        data: List[Dict[str, any]]
+        data: List[Dict[str, Any]]
     ) -> ChartGenerationResult:
         """Generate charts from data and send via WhatsApp."""
         try:

@@ -2,7 +2,7 @@
 Client analysis service - business logic for client analytics.
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.core.logging import LoggerMixin
 from app.domain.entities.client import Client, ClientSegment, ChurnRisk
@@ -200,7 +200,7 @@ class ClientAnalysisService(LoggerMixin):
         # Save updated client
         return await self.client_repository.update(client)
     
-    async def get_client_insights(self, client_id: str) -> List[Dict[str, any]]:
+    async def get_client_insights(self, client_id: str) -> List[Dict[str, Any]]:
         """Get insights for a specific client."""
         client = await self.client_repository.get_by_id(client_id)
         if not client:

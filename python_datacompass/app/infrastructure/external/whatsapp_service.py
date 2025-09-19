@@ -31,14 +31,7 @@ class WhatsAppService(LoggerMixin):
             self.client = WhatsApp(
                 phone_id=settings.whatsapp_phone_number_id,
                 token=settings.whatsapp_token,
-                business_account_id="",  # Will be auto-detected
-                webhook_endpoint="",  # Will be set in routes
-                webhook_verify_token=settings.whatsapp_webhook_verify_token,
-                server_url="",  # Will be set dynamically
-                webhook_handlers={},  # Will be set in routes
-                rate_limit_handlers={},  # Default rate limiting
-                request_timeout=30,
-                max_retries=3
+                verify_token=settings.whatsapp_webhook_verify_token,
             )
             self.logger.info("WhatsApp client initialized successfully")
         except Exception as e:
