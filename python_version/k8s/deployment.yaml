@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datacompass-python
+  namespace: whatsapp-analytics
+  labels:
+    app: datacompass
+    component: backend
+    version: "2.0"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: datacompass
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: datacompass
+        component: backend
+        version: "2.0"
+    spec:
+      containers:
+      - name: app
+        image: datacompass-python:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: datacompass-secrets
+              key: jwt-secret
+        - name: WHATSAPP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-credentials
+              key: token
+        - name: WHATSAPP_PHONE_NUMBER_ID
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-credentials
+              key: phone-number-id
+        - name: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-credentials
+              key: webhook-verify-token
+        - name: WHATSAPP_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: whatsapp-credentials
+              key: webhook-secret
+        - name: MONGODB_HOST
+          value: "mongodb-service"
+        - name: MONGODB_PORT
+          value: "27017"
+        - name: MONGODB_DATABASE
+          value: "whatsapp_analytics"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/health/ready
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datacompass-service
+  namespace: whatsapp-analytics
+spec:
+  selector:
+    app: datacompass
+    component: backend
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: datacompass-ingress
+  namespace: whatsapp-analytics
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - api.datacompass.com
+    secretName: datacompass-tls
+  rules:
+  - host: api.datacompass.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: datacompass-service
+            port:
+              number: 80

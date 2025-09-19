@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # DataCompass Python API
+  datacompass-api:
+    build: .
+    container_name: datacompass-python-api
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://mongodb:27017/datacompass
+      - WHATSAPP_TOKEN=${WHATSAPP_TOKEN:-your-token-here}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-your-phone-id}
+      - WHATSAPP_WEBHOOK_VERIFY_TOKEN=${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-datacompass_webhook_2025}
+      - WHATSAPP_WEBHOOK_SECRET=${WHATSAPP_WEBHOOK_SECRET:-your-webhook-secret}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - datacompass-network
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: datacompass-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-password}
+      - MONGO_INITDB_DATABASE=datacompass
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    networks:
+      - datacompass-network
+
+  # Redis Cache
+  redis:
+    image: redis:7.2-alpine
+    container_name: datacompass-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - datacompass-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: datacompass-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - datacompass-api
+    restart: unless-stopped
+    networks:
+      - datacompass-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  datacompass-network:
+    driver: bridge
